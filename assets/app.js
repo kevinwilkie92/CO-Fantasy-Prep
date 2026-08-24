@@ -15,6 +15,7 @@ const LS = {
   players: 'cofp.playersNfl',
   overrides: 'cofp.overrides',
   predicted: 'cofp.predicted',
+  keeperSort: 'cofp.keeperSort',
   snapshot: 'cofp.snapshot',
 };
 
@@ -355,19 +356,29 @@ function rankingFor(playerId) {
   return S.byKey.get(normName(name)) || null;
 }
 
-/** Round a player "should" cost, from ADP when we have it, else our value board. */
-function marketRound(rank) {
-  if (!rank) return null;
-  const teams = teamCount();
-  const rounds = roundCount();
-  const pick = rank.adpPick || rank.vorRank;
+/** Turn an overall pick number into the round it falls in. */
+function roundOfPick(pick) {
   if (!pick) return null;
   // Anything past the last round is simply "goes undrafted"; capping keeps a
   // deep sleeper from showing a fake 6-round bargain.
-  return Math.min(rounds + 1, Math.ceil(pick / teams));
+  return Math.min(roundCount() + 1, Math.ceil(pick / teamCount()));
 }
 
-/** Market rounds past the end of the draft just mean "nobody takes him". */
+/**
+ * The round the projections say he belongs in: rank everyone by points over
+ * replacement and deal them out in order. This is the number the keeper
+ * decision turns on — where he is *worth* taking, not where the room takes him.
+ */
+function projRound(rank) {
+  return rank ? roundOfPick(rank.vorRank) : null;
+}
+
+/** Where the market actually takes him, for comparison. Not every player has one. */
+function adpRound(rank) {
+  return rank && rank.adpPick ? roundOfPick(rank.adpPick) : null;
+}
+
+/** Rounds past the end of the draft just mean "nobody takes him". */
 function marketLabel(round) {
   if (round === null || round === undefined) return 'n/a';
   return round > roundCount() ? 'undrafted' : ordinal(round);
@@ -426,7 +437,7 @@ function buildKeepers() {
     if (override.years !== undefined && override.years !== null) yearsUsed = Number(override.years);
 
     const rank = rankingFor(pid);
-    const mkt = marketRound(rank);
+    const proj = projRound(rank);
     // Rounds saved is how managers talk, but it lies about deep players: a
     // 2nd-round keeper who would go undrafted still shows "+13 rounds". Score
     // him instead on what the pick he burns would otherwise have bought.
@@ -447,8 +458,10 @@ function buildKeepers() {
       lastRound,
       lastSeason: seasons.length ? seasons[0].season : null,
       undrafted: !lastRound,
-      marketRound: mkt,
-      surplus: mkt === null ? null : cost - mkt,
+      projRound: proj,
+      adpRound: adpRound(rank),
+      // Rounds of value: what you pay, minus where the projections say he goes.
+      surplus: proj === null ? null : cost - proj,
       costPick: pickNumber(cost, slot),
       gain: gain,
       overridden: !!(override.cost || override.years !== undefined),
@@ -474,6 +487,17 @@ function keepersForRoster(rosterId, eligibleOnly) {
 }
 
 const MAX_KEEPERS = 3;
+
+/**
+ * Card order for display. Cards show the rounds badge, so lead with rounds and
+ * break ties on points. Auto-predict deliberately does not use this — it picks
+ * on points, which does not mistake a deep sleeper at a 14th for a bargain.
+ */
+function displayOrder(list) {
+  return list.slice().sort((a, b) =>
+    ((b.surplus === null ? -99 : b.surplus) - (a.surplus === null ? -99 : a.surplus))
+    || ((b.gain === null ? -9999 : b.gain) - (a.gain === null ? -9999 : a.gain)));
+}
 
 /** Default prediction: every team keeps its three biggest bargains. */
 function autoPredict() {
@@ -846,7 +870,10 @@ function showPlayer(p) {
         el('dt', { text: 'Risk / Upside' }), el('dd', { text: fmt(p.risk) + ' / ' + fmt(p.upside) }),
         k ? el('dt', { text: 'Keeper' }) : null,
         k ? el('dd', {
-          text: teamName(k.rosterId) + ' · costs a ' + ordinal(k.cost)
+          text: teamName(k.rosterId) + ' · projects ' + marketLabel(k.projRound)
+            + ', costs ' + ordinal(k.cost)
+            + (k.surplus === null ? '' : ' · ' + signed(k.surplus) + ' rd')
+            + (k.gain === null ? '' : ' / ' + (k.gain > 0 ? '+' : '') + fmt(k.gain, 0) + ' pts')
             + (k.eligible ? '' : ' · INELIGIBLE (kept ' + k.yearsUsed + 'y)'),
         }) : null,
       ]),
@@ -863,6 +890,8 @@ function showPlayer(p) {
 }
 
 /* ----------------------------------------------------------- keepers view */
+
+let keeperSort = 'rounds';
 
 function renderKeepers() {
   const host = $('#keeperHost');
@@ -885,9 +914,12 @@ function renderKeepers() {
   }
 
   // ---- best values league-wide
+  const byRounds = (a, b) => (b.surplus === null ? -99 : b.surplus) - (a.surplus === null ? -99 : a.surplus);
+  const byPoints = (a, b) => b.gain - a.gain;
   const all = Array.from(S.keepers.values())
     .filter((k) => k.eligible && k.gain !== null)
-    .sort((a, b) => b.gain - a.gain || (a.rank ? a.rank.vorRank : 999) - (b.rank ? b.rank.vorRank : 999));
+    .sort((a, b) => (keeperSort === 'rounds' ? byRounds(a, b) || byPoints(a, b) : byPoints(a, b) || byRounds(a, b))
+      || (a.rank ? a.rank.vorRank : 999) - (b.rank ? b.rank.vorRank : 999));
 
   const valueBody = el('tbody');
   for (const k of all.slice(0, 40)) {
@@ -897,34 +929,58 @@ function renderKeepers() {
     tr.appendChild(el('td', {}, [posChip(k.pos)]));
     tr.appendChild(el('td', { class: 'muted', text: k.team || '—' }));
     tr.appendChild(el('td', { class: 'muted', text: teamName(k.rosterId) }));
-    tr.appendChild(el('td', { class: 'num right', text: ordinal(k.cost) }));
-    tr.appendChild(el('td', { class: 'num right muted', text: marketLabel(k.marketRound) }));
+    tr.appendChild(el('td', {
+      class: 'num right', title: k.rank ? 'projected #' + k.rank.vorRank + ' overall' : '',
+      text: marketLabel(k.projRound),
+    }));
+    tr.appendChild(el('td', {
+      class: 'num right',
+      title: k.undrafted ? 'undrafted last year' : 'went ' + ordinal(k.lastRound) + ' in ' + k.lastSeason,
+      text: ordinal(k.cost),
+    }));
+    tr.appendChild(el('td', {
+      class: 'right surplus ' + (k.surplus === null ? 'dim' : k.surplus > 2 ? 'good' : k.surplus > 0 ? 'warn' : 'bad'),
+      text: k.surplus === null ? '—' : signed(k.surplus) + ' rd',
+    }));
     tr.appendChild(el('td', {
       class: 'right surplus ' + (k.gain > 25 ? 'good' : k.gain > 0 ? 'warn' : 'bad'),
       text: (k.gain > 0 ? '+' : '') + fmt(k.gain, 0) + ' pts',
     }));
-    tr.appendChild(el('td', {
-      class: 'right num ' + (k.surplus > 0 ? 'muted' : 'dim'),
-      text: k.surplus === null ? '—' : signed(k.surplus) + ' rd',
-    }));
+    tr.appendChild(el('td', { class: 'num right dim', text: marketLabel(k.adpRound) }));
     tr.appendChild(el('td', { class: 'num right muted', text: k.rank ? '#' + k.rank.vorRank : '—' }));
     tr.appendChild(el('td', { class: 'muted', text: k.yearsUsed === 0 ? 'yr 1 of 2' : 'yr 2 of 2 (last year)' }));
     valueBody.appendChild(tr);
   }
 
   host.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Best keeper values in the league' }),
-    el('p', { class: 'sub', text: 'Value is the honest number: his projected points over replacement, minus what the '
-      + 'pick he burns would have bought you anyway. Positive means keeping him beats drafting at that slot. Rounds is the '
-      + 'same idea in draft-capital terms (the round he costs minus the round he actually goes) — useful for trade talk, '
-      + 'but it flatters deep sleepers, so sort by Value.' }),
+    el('div', { class: 'row' }, [
+      el('h2', { style: 'margin:0', text: 'Best keeper values in the league' }),
+      el('span', { class: 'spacer' }),
+      el('span', { class: 'sub', style: 'margin:0', text: 'sort by' }),
+      el('button', {
+        class: 'btn small' + (keeperSort === 'rounds' ? ' primary' : ''),
+        text: 'rounds saved',
+        onclick: () => { keeperSort = 'rounds'; lsSet(LS.keeperSort, keeperSort); renderKeepers(); },
+      }),
+      el('button', {
+        class: 'btn small' + (keeperSort === 'points' ? ' primary' : ''),
+        text: 'points gained',
+        onclick: () => { keeperSort = 'points'; lsSet(LS.keeperSort, keeperSort); renderKeepers(); },
+      }),
+    ]),
+    el('p', { class: 'sub', style: 'margin-top:8px' , text: 'Proj Rd is where the projections say he belongs — every player '
+      + 'ranked by points over replacement, dealt out ' + teamCount() + ' to a round. Cost is the round keeping him burns. '
+      + 'Rounds is the gap between them: +4 means you get a 4th-round-caliber player for the price of an 8th. Points is the '
+      + 'same question in scoring terms — his value minus what that pick would have returned anyway — and it is the safer '
+      + 'tiebreak, because a deep sleeper can show a fat round surplus at a 14th and still be worth almost nothing.' }),
     el('div', { class: 'table-wrap' }, [
       el('table', {}, [
         el('thead', {}, [el('tr', {}, [
           el('th', { text: 'Player' }), el('th', { text: 'Pos' }), el('th', { text: 'Tm' }),
-          el('th', { text: 'Fantasy team' }), el('th', { class: 'right', text: 'Cost' }),
-          el('th', { class: 'right', text: 'Market' }), el('th', { class: 'right', text: 'Value' }),
-          el('th', { class: 'right', text: 'Rounds' }), el('th', { class: 'right', text: 'Board' }),
+          el('th', { text: 'Fantasy team' }),
+          el('th', { class: 'right', text: 'Proj Rd' }), el('th', { class: 'right', text: 'Cost' }),
+          el('th', { class: 'right', text: 'Rounds' }), el('th', { class: 'right', text: 'Points' }),
+          el('th', { class: 'right', text: 'ADP Rd' }), el('th', { class: 'right', text: 'Board' }),
           el('th', { text: 'Keeper yr' }),
         ])]),
         valueBody,
@@ -938,21 +994,22 @@ function renderKeepers() {
     const eligible = keepersForRoster(r.roster_id, true);
     const blocked = keepersForRoster(r.roster_id, false).filter((k) => !k.eligible);
     const list = el('ul');
-    for (const k of eligible) {
+    for (const k of displayOrder(eligible)) {
       list.appendChild(el('li', {}, [
         el('div', { class: 'who' }, [
           el('span', { class: 'n', text: k.name }),
           el('span', { class: 'm' }, [
-            posChip(k.pos), ' ' + (k.team || 'FA') + ' · costs ' + ordinal(k.cost)
-            + ' (market ' + marketLabel(k.marketRound) + ')'
+            posChip(k.pos), ' ' + (k.team || 'FA') + ' · projects ' + marketLabel(k.projRound)
+            + ', costs ' + ordinal(k.cost)
             + ' · ' + (k.undrafted ? 'undrafted ' + (k.lastSeason || '') : 'went ' + ordinal(k.lastRound) + ' in ' + k.lastSeason)
             + (k.yearsUsed ? ' · final keeper year' : ''),
           ]),
         ]),
         el('span', {
-          class: 'surplus ' + (k.gain === null ? 'dim' : k.gain > 25 ? 'good' : k.gain > 0 ? 'warn' : 'bad'),
-          text: k.gain === null ? '—' : (k.gain > 0 ? '+' : '') + fmt(k.gain, 0),
-          title: 'projected points gained over what this pick would otherwise buy',
+          class: 'surplus ' + (k.surplus === null ? 'dim' : k.surplus > 2 ? 'good' : k.surplus > 0 ? 'warn' : 'bad'),
+          text: k.surplus === null ? '—' : signed(k.surplus) + ' rd',
+          title: k.gain === null ? '' : 'worth ' + (k.gain > 0 ? '+' : '') + fmt(k.gain, 0)
+            + ' projected points over what this pick would otherwise buy',
         }),
       ]));
     }
@@ -1056,7 +1113,7 @@ function renderSim() {
     const eligible = keepersForRoster(r.roster_id, true);
     const chosen = predictedForRoster(r.roster_id);
     const list = el('ul');
-    for (const k of eligible) {
+    for (const k of displayOrder(eligible)) {
       const on = S.predicted.has(k.playerId);
       const assigned = assignments.get(k.playerId);
       const box = el('input', {
@@ -1080,15 +1137,16 @@ function renderSim() {
         el('div', { class: 'who' }, [
           el('span', { class: 'n', text: k.name }),
           el('span', { class: 'm' }, [
-            posChip(k.pos), ' ' + (k.team || 'FA') + ' · ' + ordinal(k.cost)
-            + (assigned && assigned.bumped ? ' → ' + ordinal(assigned.round) : '')
-            + ' · market ' + marketLabel(k.marketRound),
+            posChip(k.pos), ' ' + (k.team || 'FA') + ' · projects ' + marketLabel(k.projRound)
+            + ', costs ' + ordinal(k.cost)
+            + (assigned && assigned.bumped ? ' → ' + ordinal(assigned.round) : ''),
           ]),
         ]),
         el('span', {
-          class: 'surplus ' + (k.gain === null ? 'dim' : k.gain > 25 ? 'good' : k.gain > 0 ? 'warn' : 'bad'),
-          text: k.gain === null ? '—' : (k.gain > 0 ? '+' : '') + fmt(k.gain, 0),
-          title: 'projected points gained over what this pick would otherwise buy',
+          class: 'surplus ' + (k.surplus === null ? 'dim' : k.surplus > 2 ? 'good' : k.surplus > 0 ? 'warn' : 'bad'),
+          text: k.surplus === null ? '—' : signed(k.surplus) + ' rd',
+          title: k.gain === null ? '' : 'worth ' + (k.gain > 0 ? '+' : '') + fmt(k.gain, 0)
+            + ' projected points over what this pick would otherwise buy',
         }),
       ]));
     }
@@ -1415,6 +1473,7 @@ async function boot(leagueId, opts) {
 
 function init() {
   S.overrides = lsGet(LS.overrides, {}) || {};
+  keeperSort = lsGet(LS.keeperSort, 'rounds') || 'rounds';
   S.myRosterId = lsGet(LS.team, null);
   const savedView = (() => { try { return localStorage.getItem('cofp.view'); } catch (e) { return null; } })();
   if (savedView && VIEWS.indexOf(savedView) !== -1) activeView = savedView;

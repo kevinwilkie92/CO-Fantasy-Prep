@@ -88,21 +88,38 @@ was a keeper if it was flagged that way at the time. If your league did not flag
 them, the Keepers tab has an override editor for cost and years-used. Overrides
 are stored in your browser and survive reloads.
 
-## Two numbers on every keeper
+## Reading the keeper table
 
-**Value (points)** is the one to trust. It is the player's projected points over
-replacement, minus what the pick he burns would have bought you anyway. Positive
-means keeping him beats drafting at that slot.
+Four columns carry the decision, left to right:
 
-**Rounds** is the same idea in draft capital — the round he costs minus the round
-he actually goes. It is the number to quote in trade talk, but it flatters deep
-sleepers: a player who would go undrafted still shows a fat round surplus at a
-14th. When the two disagree, believe the points.
+| Column | What it is |
+| --- | --- |
+| **Proj Rd** | Where the projections say he belongs — every player ranked by points over replacement, dealt out 12 to a round |
+| **Cost** | The round keeping him burns |
+| **Rounds** | `Cost − Proj Rd`. +4 means a 4th-round-caliber player for the price of an 8th |
+| **Points** | His value minus what that pick would have returned anyway |
+
+So *Tyler Warren projects 2nd, costs a 6th, +4 rounds* — that is the sentence the
+table is built to say.
+
+**Rounds** is the headline and the default sort. **Points** is the safer
+tiebreak: a deep sleeper can show a fat round surplus at a 14th and still be
+worth almost nothing, because a 14th-round pick was never going to return much
+either. When the two disagree, believe the points. The sort toggle above the
+table switches between them.
+
+**ADP Rd** sits alongside as a reality check — where the room actually takes
+him. Proj Rd is what he is *worth*; ADP Rd is what he *costs on the open
+market*. A player projected 2nd but going 4th is a genuine edge; a player
+projected 9th and undrafted by ADP means the model likes him and nobody else
+does.
 
 Replacement level is computed from your league's *actual* starting lineup, so
 the value of an elite TE or a second RB reflects how this league is built, not a
-generic template. The League Settings tab shows the replacement level it landed
-on for each position.
+generic template. That is why elite TEs crowd the top of the list — with one TE
+slot and a flex, the gap between TE3 and TE14 is worth more than the same gap at
+RB. The League Settings tab shows the replacement level it landed on for each
+position.
 
 ## Rankings
 
