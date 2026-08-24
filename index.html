@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CO Fantasy Prep — Keeper Draft Tool</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">CO <span>Fantasy Prep</span></div>
+  <nav class="tabs" role="tablist">
+    <button id="tab-board" role="tab" aria-selected="true">Draft Board</button>
+    <button id="tab-available" role="tab" aria-selected="false">Available</button>
+    <button id="tab-keepers" role="tab" aria-selected="false">Keepers</button>
+    <button id="tab-sim" role="tab" aria-selected="false">Keeper Sim</button>
+    <button id="tab-league" role="tab" aria-selected="false">League Settings</button>
+  </nav>
+  <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Starting…</span></div>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <div class="card">
+    <div class="row">
+      <label class="field grow">Sleeper league ID
+        <input type="text" id="leagueInput" spellcheck="false" placeholder="1384887457304031232">
+      </label>
+      <label class="field grow">Your team
+        <select id="myTeam"><option value="">— load a league first —</option></select>
+      </label>
+      <div class="row" style="align-self:flex-end">
+        <button class="btn" id="loadBtn">Reload league</button>
+        <button class="btn" id="refreshBtn">Refresh picks</button>
+        <button class="btn primary" id="liveToggle">Start live updates</button>
+      </div>
+    </div>
+    <p class="sub" style="margin:10px 0 0" id="leagueTitle"></p>
+  </div>
+
+  <!-- ------------------------------------------------------ draft board -->
+  <section class="panel-view" id="view-board">
+    <div class="card">
+      <div class="row">
+        <h2 style="margin:0">Draft board</h2>
+        <span class="spacer"></span>
+        <label class="row" style="gap:5px;font-size:12px;color:var(--muted)">
+          <input type="checkbox" id="optKeepers" checked> show predicted keepers
+        </label>
+        <label class="row" style="gap:5px;font-size:12px;color:var(--muted)">
+          <input type="checkbox" id="optProject"> project open picks by ADP
+        </label>
+      </div>
+      <p class="sub" id="boardMeta" style="margin:8px 0 0"></p>
+    </div>
+    <div id="boardHost"></div>
+  </section>
+
+  <!-- -------------------------------------------------------- available -->
+  <section class="panel-view" id="view-available" hidden>
+    <div class="card">
+      <div class="row">
+        <input type="search" id="availSearch" class="grow" placeholder="Search player or NFL team…">
+        <select id="availPos">
+          <option value="ALL">All positions</option>
+          <option value="QB">QB</option>
+          <option value="RB">RB</option>
+          <option value="WR">WR</option>
+          <option value="TE">TE</option>
+        </select>
+        <label class="row" style="gap:5px;font-size:12px;color:var(--muted)">
+          <input type="checkbox" id="availHideKeepers" checked> hide predicted keepers
+        </label>
+      </div>
+      <p class="sub" id="availMeta" style="margin:8px 0 0"></p>
+    </div>
+    <div id="availHost"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- keepers -->
+  <section class="panel-view" id="view-keepers" hidden>
+    <div id="keeperHost"></div>
+  </section>
+
+  <!-- ------------------------------------------------------- keeper sim -->
+  <section class="panel-view" id="view-sim" hidden>
+    <div id="simHost"></div>
+  </section>
+
+  <!-- --------------------------------------------------- league settings -->
+  <section class="panel-view" id="view-league" hidden>
+    <div id="leagueHost"></div>
+  </section>
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
