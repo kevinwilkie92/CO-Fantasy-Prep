@@ -1403,7 +1403,10 @@ async function boot(leagueId, opts) {
   }
 
   populateTeamSelect();
-  $('#leagueTitle').textContent = S.league.name + ' · ' + S.league.season;
+  $('#leagueTitle').textContent = S.league.name + ' · ' + S.league.season
+    + (S.myRosterId ? ' · ' + teamName(S.myRosterId) : '');
+  // On a phone the board should be the first thing on screen, not the setup form.
+  if (window.innerWidth < 900) $('#setupCard').removeAttribute('open');
   $('#loadBtn').disabled = false;
   renderActive();
 
@@ -1425,6 +1428,10 @@ function init() {
   $('#myTeam').addEventListener('change', (e) => {
     S.myRosterId = e.target.value ? Number(e.target.value) : null;
     lsSet(LS.team, S.myRosterId);
+    if (S.league) {
+      $('#leagueTitle').textContent = S.league.name + ' · ' + S.league.season
+        + (S.myRosterId ? ' · ' + teamName(S.myRosterId) : '');
+    }
     renderActive();
   });
 

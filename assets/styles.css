@@ -41,17 +41,33 @@ header.topbar {
   z-index: 40;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   flex-wrap: wrap;
-  padding: 10px 16px;
+  padding: 9px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 
-.brand { font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.brand { font-weight: 700; letter-spacing: -.01em; white-space: nowrap; flex: 1; }
 .brand span { color: var(--accent); }
 
-nav.tabs { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
+nav.tabs {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  gap: 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+nav.tabs::-webkit-scrollbar { display: none; }
+nav.tabs button { white-space: nowrap; flex: none; }
+
+@media (min-width: 900px) {
+  .brand { flex: none; }
+  nav.tabs { order: 0; flex-basis: auto; flex: 1; overflow-x: visible; }
+}
 
 nav.tabs button {
   background: none;
@@ -68,7 +84,7 @@ nav.tabs button[aria-selected="true"] {
   border-color: var(--line);
 }
 
-.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); flex: none; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
 .dot.ok { background: var(--good); }
 .dot.live { background: var(--good); animation: pulse 1.6s infinite; }
@@ -246,6 +262,21 @@ td.is-proj { background: rgba(210,153,34,.07); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-bottom: 10px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 
+details.setup > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+details.setup > summary::-webkit-details-marker { display: none; }
+details.setup > summary::after { content: '▾'; margin-left: auto; color: var(--muted); font-weight: 400; }
+details.setup[open] > summary::after { content: '▴'; }
+details.setup > summary .lg { font-weight: 400; color: var(--muted); font-size: 12px; }
+details.setup > .row { margin-top: 12px; }
+
 details.raw { margin-top: 10px; }
 details.raw summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 details.raw pre {
@@ -282,5 +313,11 @@ dl.kv dd { margin: 0; font-family: var(--mono); }
 
 @media (max-width: 720px) {
   main { padding: 10px; }
-  .card { padding: 12px; }
+  .card, details.setup { padding: 12px; }
+  /* Narrower columns fit ~4 teams on screen; the round rail stays pinned. */
+  table.board thead th { min-width: 96px; }
+  table.board td { height: 42px; }
+  .board-scroll { max-height: 72vh; }
+  .grid-cards { grid-template-columns: 1fr; }
+  button.btn { padding: 8px 13px; }
 }

@@ -23,7 +23,8 @@
 <main>
   <div id="banner"></div>
 
-  <div class="card">
+  <details class="card setup" id="setupCard" open>
+    <summary>League &amp; team <span class="lg" id="leagueTitle"></span></summary>
     <div class="row">
       <label class="field grow">Sleeper league ID
         <input type="text" id="leagueInput" spellcheck="false" placeholder="1384887457304031232">
@@ -37,8 +38,7 @@
         <button class="btn primary" id="liveToggle">Start live updates</button>
       </div>
     </div>
-    <p class="sub" style="margin:10px 0 0" id="leagueTitle"></p>
-  </div>
+  </details>
 
   <!-- ------------------------------------------------------ draft board -->
   <section class="panel-view" id="view-board">

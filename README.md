@@ -7,7 +7,28 @@ It is a static page. Everything — the league pull, the keeper math, the value
 model — runs in your browser, so there is nothing to deploy and nothing to keep
 in sync. Sleeper's API is public and read-only; the app never writes to it.
 
-## Run it
+## Get to it from a link (phone + laptop)
+
+Turn on GitHub Pages once and the tool lives at a URL you can bookmark on any
+device:
+
+1. <https://github.com/kevinwilkie92/CO-Fantasy-Prep/settings/pages>
+2. **Source** → *Deploy from a branch*
+3. **Branch** → `claude/fantasy-draft-tool-icg1q5`, folder `/ (root)` → **Save**
+
+A minute later it is live at:
+
+**<https://kevinwilkie92.github.io/CO-Fantasy-Prep/>**
+
+Every push to that branch redeploys automatically. On iPhone, *Share → Add to
+Home Screen* gives it an app icon.
+
+This repo is public, so anyone with the link can open the page — including your
+leaguemates, keeper predictions and all. Nothing secret is in it (the league ID
+is already in the Sleeper URL you share), but make the repo private if you would
+rather they could not. Pages on a private repo needs a paid GitHub plan.
+
+## Or run it locally
 
 ```sh
 python3 -m http.server 8000
@@ -109,6 +130,7 @@ snapshot, not source.
 
 ```
 index.html               shell and tab markup
+.nojekyll                stops GitHub Pages running the files through Jekyll
 assets/app.js            API client, keeper engine, value model, all views
 assets/styles.css
 data/rankings.json       generated — do not edit by hand
