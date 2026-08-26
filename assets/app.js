@@ -37,6 +37,7 @@ const S = {
   draft: null,
   picks: [],
   history: [],          // [{season, leagueId, draftId, picks}] newest completed first
+  tradedPicks: [],      // picks that changed hands for this draft's season
   nflPlayers: {},       // id -> [name, pos, team]
   rankings: [],
   byKey: new Map(),     // normalized name -> ranking row
@@ -210,6 +211,12 @@ async function loadLeague(leagueId) {
   setStatus('Loading draft picks…');
   S.picks = S.draft ? await api('/draft/' + S.draft.draft_id + '/picks').catch(() => []) : [];
 
+  // Picks that changed hands. Sleeper keys these by the roster the pick
+  // originally belonged to, which is the slot it still sits in on the board.
+  const season = String((S.draft && S.draft.season) || league.season);
+  const traded = await api('/league/' + leagueId + '/traded_picks').catch(() => []);
+  S.tradedPicks = (traded || []).filter((t) => String(t.season) === season);
+
   setStatus('Loading prior-season drafts…');
   S.history = await loadHistory(league, 6);
 
@@ -225,6 +232,7 @@ async function loadLeague(leagueId) {
     draft: S.draft,
     picks: S.picks,
     history: S.history,
+    tradedPicks: S.tradedPicks,
   });
 }
 
@@ -280,6 +288,22 @@ function rosterToSlot() {
   const out = {};
   for (const [slot, rid] of Object.entries(slotToRoster())) out[rid] = Number(slot);
   return out;
+}
+
+/**
+ * Who actually holds each pick. A pick keeps the board slot of the roster it
+ * was originally assigned to; a trade only changes who gets to use it.
+ * Returns a map of "round:originalRosterId" -> current owner roster_id.
+ */
+function pickOwnerMap() {
+  const map = new Map();
+  for (const t of (S.tradedPicks || [])) {
+    const original = Number(t.roster_id);
+    const owner = Number(t.owner_id);
+    if (!original || !owner || !t.round) continue;
+    map.set(Number(t.round) + ':' + original, owner);
+  }
+  return map;
 }
 
 /** Snake order: overall pick number for a given round + draft slot. */
@@ -608,13 +632,16 @@ function buildBoard(opts) {
   const actual = actualPickMap();
   const { assignments, conflicts } = opts.useKeepers ? assignKeeperRounds() : { assignments: new Map(), conflicts: [] };
 
-  // roster_id -> round -> keeper
-  const keeperGrid = new Map();
+  // "ownerRosterId:round" -> keepers waiting to be placed on a pick that team
+  // actually holds. A team that traded its 5th away cannot pay a 5th for a
+  // keeper, so these are consumed against real owned picks rather than slots.
+  const keeperQueue = new Map();
   for (const [pid, info] of assignments.entries()) {
     const k = S.keepers.get(pid);
     if (!k) continue;
-    if (!keeperGrid.has(k.rosterId)) keeperGrid.set(k.rosterId, new Map());
-    keeperGrid.get(k.rosterId).set(info.round, Object.assign({}, k, { bumped: info.bumped }));
+    const key = k.rosterId + ':' + info.round;
+    if (!keeperQueue.has(key)) keeperQueue.set(key, []);
+    keeperQueue.get(key).push(Object.assign({}, k, { bumped: info.bumped }));
   }
 
   const taken = draftedKeys();
@@ -626,49 +653,66 @@ function buildBoard(opts) {
   let poolIdx = 0;
 
   const s2r = slotToRoster();
+  const owners = pickOwnerMap();
   const cells = [];
   for (let round = 1; round <= rounds; round += 1) {
     const row = [];
     for (let slot = 1; slot <= teams; slot += 1) {
       const pickNo = pickNumber(round, slot);
-      const rosterId = s2r[slot] || null;
+      const fromRosterId = s2r[slot] || null;
+      const tradedTo = fromRosterId ? owners.get(round + ':' + fromRosterId) : null;
+      const rosterId = tradedTo || fromRosterId;
+      const traded = !!(tradedTo && tradedTo !== fromRosterId);
+      const base = { pickNo, round, slot, rosterId, fromRosterId, traded };
       const real = actual.get(pickNo);
-      let cell = { pickNo, round, slot, rosterId, kind: 'empty' };
+      let cell = Object.assign({}, base, { kind: 'empty' });
       if (real && real.player_id) {
         const pid = String(real.player_id);
-        cell = {
-          pickNo, round, slot, rosterId: Number(real.roster_id) || rosterId,
+        // A completed pick records who actually made it, trades included.
+        const madeBy = Number(real.roster_id) || rosterId;
+        cell = Object.assign({}, base, {
+          rosterId: madeBy,
+          traded: !!(fromRosterId && madeBy !== fromRosterId),
           kind: 'pick',
           name: playerName(pid),
           pos: playerPos(pid),
           nflTeam: playerTeam(pid),
           isKeeper: !!real.is_keeper,
           rank: rankingFor(pid),
-        };
-      } else if (rosterId && keeperGrid.has(rosterId) && keeperGrid.get(rosterId).has(round)) {
-        const k = keeperGrid.get(rosterId).get(round);
-        cell = {
-          pickNo, round, slot, rosterId,
-          kind: 'keeper',
-          name: k.name, pos: k.pos, nflTeam: k.team,
-          bumped: k.bumped, cost: k.cost, rank: k.rank,
-        };
-      } else if (opts.project) {
-        const next = pool[poolIdx];
-        poolIdx += 1;
-        if (next) {
-          cell = {
-            pickNo, round, slot, rosterId,
-            kind: 'proj',
-            name: next.name, pos: next.pos, nflTeam: next.team, rank: next,
-          };
+        });
+      } else {
+        const queued = rosterId ? keeperQueue.get(rosterId + ':' + round) : null;
+        if (queued && queued.length) {
+          const k = queued.shift();
+          cell = Object.assign({}, base, {
+            kind: 'keeper',
+            name: k.name, pos: k.pos, nflTeam: k.team,
+            bumped: k.bumped, cost: k.cost, rank: k.rank,
+          });
+        } else if (opts.project) {
+          const next = pool[poolIdx];
+          poolIdx += 1;
+          if (next) {
+            cell = Object.assign({}, base, {
+              kind: 'proj',
+              name: next.name, pos: next.pos, nflTeam: next.team, rank: next,
+            });
+          }
         }
       }
       row.push(cell);
     }
     cells.push(row);
   }
-  return { cells, conflicts, assignments };
+
+  // Anything still queued wanted a round its team no longer holds a pick in.
+  const orphans = [];
+  for (const [key, list] of keeperQueue.entries()) {
+    for (const k of list) {
+      orphans.push({ team: teamName(k.rosterId), name: k.name, round: Number(key.split(':')[1]) });
+    }
+  }
+  return { cells, conflicts, assignments, orphans };
 }
 
 function onTheClock() {
@@ -692,7 +736,7 @@ function renderBoard() {
   }
   const useKeepers = $('#optKeepers').checked;
   const project = $('#optProject').checked;
-  const { cells, conflicts } = buildBoard({ useKeepers, project });
+  const { cells, conflicts, orphans } = buildBoard({ useKeepers, project });
   const s2r = slotToRoster();
   const clock = onTheClock();
 
@@ -703,6 +747,16 @@ function renderBoard() {
         + '. Two keepers wanted the same round, so the second slid to the nearest open one.',
     ]));
   }
+
+  if (orphans && orphans.length) {
+    host.appendChild(el('div', { class: 'notice' }, [
+      el('strong', { text: 'Keeper has no pick to pay with: ' }),
+      orphans.map((o) => o.team + ' — ' + o.name + ' needs a ' + ordinal(o.round)).join('; ')
+        + '. That round was traded away, so the keeper could not be placed.',
+    ]));
+  }
+
+  const tradedCount = cells.reduce((n, row) => n + row.filter((c) => c.traded).length, 0);
 
   const head = el('tr', {}, [el('th', { class: 'rnd', text: 'R' })]);
   for (let slot = 1; slot <= teamCount(); slot += 1) {
@@ -723,14 +777,24 @@ function renderBoard() {
       if (cell.rosterId && cell.rosterId === S.myRosterId) classes.push('is-mine');
       if (clock && cell.pickNo === clock) classes.push('on-clock');
 
+      if (cell.traded) classes.push('is-traded');
+
+      const ownerTag = cell.traded && cell.rosterId
+        ? el('span', { class: 'owner', title: 'traded from ' + teamName(cell.fromRosterId), text: '→ ' + teamName(cell.rosterId) })
+        : null;
+
       let inner;
       if (cell.kind === 'empty') {
-        inner = el('span', { class: 'cell-empty', text: '#' + cell.pickNo });
+        inner = el('div', { class: 'cell-pick' }, [
+          el('span', { class: 'cell-empty', text: '#' + cell.pickNo }),
+          ownerTag,
+        ]);
       } else {
         inner = el('div', { class: 'cell-pick' }, [
           el('span', { class: 'pn', text: '#' + cell.pickNo + (cell.kind === 'keeper' ? ' · KEEPER' : (cell.isKeeper ? ' · KEEPER' : '')) }),
           el('span', { class: 'nm' + (cell.kind === 'proj' ? ' proj' : ''), text: cell.name }),
           el('span', { class: 'mt' }, [posChip(cell.pos), ' ' + (cell.nflTeam || '')]),
+          ownerTag,
         ]);
         if (cell.rank) {
           inner.style.cursor = 'pointer';
@@ -747,6 +811,9 @@ function renderBoard() {
     el('span', {}, [el('i', { style: 'background:rgba(88,166,255,.5)' }), 'your team']),
     el('span', {}, [el('i', { style: 'background:rgba(63,185,80,.5)' }), 'on the clock']),
     el('span', {}, [el('i', { style: 'background:rgba(210,153,34,.4)' }), 'projected (ADP)']),
+    tradedCount
+      ? el('span', {}, [el('i', { style: 'background:rgba(248,81,73,.45)' }), tradedCount + ' traded — arrow names who owns it now'])
+      : el('span', { class: 'dim', text: 'no picks traded' }),
   ]));
   host.appendChild(el('div', { class: 'board-scroll' }, [
     el('table', { class: 'board' }, [el('thead', {}, [head]), body]),
@@ -1164,32 +1231,37 @@ function renderSim() {
 
   // ---- what it does to your picks
   if (S.myRosterId) {
-    const mySlot = r2s[S.myRosterId];
-    const mine = predictedForRoster(S.myRosterId);
-    const burned = new Set(mine.map((k) => (assignments.get(k.playerId) || {}).round).filter(Boolean));
     const board = buildBoard({ useKeepers: true, project: true });
     const lines = [];
+    let acquired = 0;
     for (let round = 1; round <= roundCount(); round += 1) {
-      if (burned.has(round)) continue;
-      const cell = board.cells[round - 1][mySlot - 1];
-      if (!cell) continue;
-      lines.push(el('tr', {}, [
-        el('td', { class: 'num right muted', text: ordinal(round) }),
-        el('td', { class: 'num right muted', text: '#' + cell.pickNo }),
-        el('td', { class: 'name', text: cell.kind === 'empty' ? '—' : cell.name }),
-        el('td', {}, [cell.pos ? posChip(cell.pos) : '']),
-        el('td', { class: 'muted', text: cell.rank ? 'ADP ' + (cell.rank.adp || '—') + ' · tier ' + (cell.rank.tier || '?') : '' }),
-      ]));
+      // Walk every pick you own this round, not just your own slot — a pick you
+      // traded for is yours, and a round you spent on a keeper is gone.
+      for (const cell of board.cells[round - 1]) {
+        if (cell.rosterId !== S.myRosterId || cell.kind === 'keeper') continue;
+        if (cell.traded) acquired += 1;
+        lines.push(el('tr', {}, [
+          el('td', { class: 'num right muted', text: ordinal(round) }),
+          el('td', { class: 'num right muted', text: '#' + cell.pickNo }),
+          el('td', { class: 'name', text: cell.kind === 'empty' ? '—' : cell.name }),
+          el('td', {}, [cell.pos ? posChip(cell.pos) : '']),
+          el('td', { class: 'muted', text: cell.traded ? 'from ' + teamName(cell.fromRosterId) : '' }),
+          el('td', { class: 'muted', text: cell.rank ? 'ADP ' + (cell.rank.adp || '—') + ' · tier ' + (cell.rank.tier || '?') : '' }),
+        ]));
+      }
     }
     host.appendChild(el('div', { class: 'card' }, [
       el('h2', { text: 'Your board after keepers' }),
-      el('p', { class: 'sub', text: 'Rounds you spend on keepers drop out. Everything left is who the ADP pool projects '
+      el('p', { class: 'sub', text: lines.length + ' picks you own'
+        + (acquired ? ', ' + acquired + ' of them traded for' : '')
+        + '. Rounds you spend on keepers drop out. Everything left is who the ADP pool projects '
         + 'to still be there at your pick once every predicted keeper is off the table.' }),
       el('div', { class: 'table-wrap' }, [
         el('table', {}, [
           el('thead', {}, [el('tr', {}, [
             el('th', { class: 'right', text: 'Rd' }), el('th', { class: 'right', text: 'Pick' }),
-            el('th', { text: 'Projected best available' }), el('th', { text: 'Pos' }), el('th', { text: '' }),
+            el('th', { text: 'Projected best available' }), el('th', { text: 'Pos' }),
+            el('th', { text: 'Acquired' }), el('th', { text: '' }),
           ])]),
           el('tbody', {}, lines),
         ]),
@@ -1267,13 +1339,17 @@ function renderLeague() {
     ]),
   ]));
 
+  const owners = pickOwnerMap();
   const orderBody = el('tbody');
   for (let slot = 1; slot <= teamCount(); slot += 1) {
     const rid = slotToRoster()[slot];
     orderBody.appendChild(el('tr', { class: rid === S.myRosterId ? 'sel' : '' }, [
       el('td', { class: 'num right', text: slot }),
       el('td', { class: 'name', text: rid ? teamName(rid) : '—' }),
-      el('td', { class: 'muted', text: rid ? ('picks ' + [1, 2, 3].map((r) => '#' + pickNumber(r, slot)).join(', ') + ' …') : '' }),
+      el('td', { class: 'muted' }, [rid ? [1, 2, 3].map((r) => {
+        const owner = owners.get(r + ':' + rid);
+        return '#' + pickNumber(r, slot) + (owner && owner !== rid ? ' (→ ' + teamName(owner) + ')' : '');
+      }).join(', ') + ' …' : '']),
       el('td', { class: 'num right muted', text: rid ? predictedForRoster(rid).length + ' keepers' : '' }),
     ]));
   }
@@ -1373,6 +1449,7 @@ async function loadBundle() {
   S.draft = b.draft || null;
   S.picks = b.picks || [];
   S.history = b.history || [];
+  S.tradedPicks = b.tradedPicks || [];
   S.nflPlayers = b.players || {};
   S.leagueId = b.league && b.league.league_id;
   return b;

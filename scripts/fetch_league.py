@@ -83,12 +83,23 @@ def main():
     draft = next((d for d in drafts if d.get("draft_id") == league.get("draft_id")), None) or (drafts[0] if drafts else None)
     picks = get("/draft/%s/picks" % draft["draft_id"]) if draft else []
 
+    # Picks that changed hands, narrowed to this draft's season.
+    season = str((draft or {}).get("season") or league.get("season"))
+    try:
+        traded = [t for t in (get("/league/%s/traded_picks" % league_id) or [])
+                  if str(t.get("season")) == season]
+    except Exception as exc:
+        print("  ! could not read traded picks: %s" % exc)
+        traded = []
+    print("  traded picks this season: %d" % len(traded))
+
     bundle = {
         "league": league,
         "rosters": get("/league/%s/rosters" % league_id),
         "users": get("/league/%s/users" % league_id),
         "draft": draft,
         "picks": picks or [],
+        "tradedPicks": traded,
         "history": history(league),
         "players": trimmed_players(),
     }

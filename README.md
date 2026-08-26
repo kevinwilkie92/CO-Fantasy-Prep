@@ -50,9 +50,9 @@ picks, and every prior-season draft it can reach through Sleeper's
 
 **Draft Board** — the 12-wide snake grid, rounds down the side. Press *Start
 live updates* on draft day and it polls every 10 seconds; the pick on the clock
-is outlined, your column is tinted. Two toggles: overlay the keepers you expect
-teams to declare, and fill every open pick with an ADP guess at who is still
-there.
+is outlined, and picks you own are tinted. Two toggles: overlay the keepers you
+expect teams to declare, and fill every open pick with an ADP guess at who is
+still there.
 
 **Available** — everyone not yet drafted, sortable on any column, searchable,
 with predicted keepers removed by default so the pool reflects reality. Click a
@@ -65,6 +65,24 @@ row for the full Ultimate Draft Kit writeup, projection, risk/upside and ADP.
 board redraw. *Auto-predict* fills in every team's three biggest bargains as a
 starting point. If you have picked your team, it also shows which of your rounds
 survive and who the pool projects will be there when you pick.
+
+## Traded picks
+
+A traded pick keeps the board slot it started in — that is where it falls in the
+snake — so the column heading is the team the pick *came from*, not always the
+team that gets to use it. Any pick that changed hands is marked with a red edge
+and an arrow naming who holds it now, and the count sits in the legend.
+
+Ownership, not the column, drives everything downstream: your picks are tinted
+wherever they sit, a pick you traded away stops counting as yours, and *Your
+board after keepers* on the Keeper Sim lists every pick you actually hold —
+including ones you traded for, labelled with who they came from.
+
+Keepers are paid for with picks a team genuinely owns, so a pick acquired in a
+trade can cover a keeper, and a round traded away cannot. If a predicted keeper
+needs a round its team no longer holds, the board says so above the grid rather
+than quietly placing him — leagues differ on whether that keeper is forfeited or
+slides to another round, so it is flagged for you to settle.
 
 ## Keeper rules encoded
 
