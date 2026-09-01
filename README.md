@@ -92,15 +92,20 @@ slides to another round, so it is flagged for you to settle.
   back-to-back years and he is done.
 - Cost is **one round earlier than where he went last year**. First-rounders stay
   first-rounders. Undrafted players cost a **14th**.
+- A keeper must be taken in the round he costs — he cannot be moved to another
+  round to resolve a clash.
 - Only players on the **end-of-season roster** are eligible.
 
-Two keepers can want the same round — a team keeping both its 1st and 2nd
-rounders owes two 1sts. Whether that is actually a collision depends on how many
-picks the team holds in that round: two picks in a round pays for two keepers,
-and a round traded away pays for none. When a keeper genuinely has no pick left,
-it slides to the nearest round the team still holds, preferring earlier, and the
-board prints exactly what it did. Confirm that tiebreak matches your league's
-house rule.
+A keeper is paid for with a pick in his **exact** cost round. He never moves to
+another round, so two keepers who both cost a 5th need two 5th-round picks.
+
+Whether that is a clash depends on how many picks the team actually holds in
+that round: two picks in a round pays for two keepers, and a round traded away
+pays for none. When there is no pick left, the keeper simply cannot be kept —
+the board says so in red and leaves him off, and the Keeper Sim flags the exact
+player with "no 5th left to pay with" so you can drop one of the pair.
+Auto-predict already respects this and will never propose a set the rule
+forbids; it takes the next-best keeper the team can actually pay for.
 
 ### If Sleeper never flagged your keepers
 

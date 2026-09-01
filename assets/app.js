@@ -526,11 +526,23 @@ function displayOrder(list) {
 /** Default prediction: every team keeps its three biggest bargains. */
 function autoPredict() {
   const picked = new Set();
+  const capacity = pickCapacity();
   for (const r of S.rosters) {
+    const owned = capacity.get(r.roster_id) || new Map();
+    const used = new Map();
     const eligible = keepersForRoster(r.roster_id, true)
       // A keeper is only worth a slot if he beats what that pick would buy.
       .filter((k) => k.gain !== null && k.gain > 0);
-    for (const k of eligible.slice(0, MAX_KEEPERS)) picked.add(k.playerId);
+    let taken = 0;
+    for (const k of eligible) {
+      if (taken >= MAX_KEEPERS) break;
+      // Since he cannot slide, skip anyone whose round is already spoken for
+      // and move on to the next-best keeper the team can actually pay for.
+      if ((owned.get(k.cost) || 0) - (used.get(k.cost) || 0) <= 0) continue;
+      used.set(k.cost, (used.get(k.cost) || 0) + 1);
+      picked.add(k.playerId);
+      taken += 1;
+    }
   }
   S.predicted = picked;
   persistPredicted();
@@ -587,42 +599,41 @@ function pickCapacity() {
   return cap;
 }
 
+/**
+ * A keeper is paid for with a pick in his exact cost round — he never slides to
+ * another round. If the team has no pick left there, he simply cannot be kept,
+ * and the manager has to give one of them up.
+ */
 function assignKeeperRounds() {
-  const rounds = roundCount();
-  const assignments = new Map(); // playerId -> {round, bumped}
-  const conflicts = [];
+  const assignments = new Map(); // playerId -> {round}
+  const blocked = [];
   const capacity = pickCapacity();
 
   for (const r of S.rosters) {
-    // Count picks per round rather than marking rounds used: a team holding two
-    // picks in a round can pay for two keepers out of it, and a team that traded
-    // its pick away can pay for none.
+    // Count picks per round: a team holding two picks in a round can pay for
+    // two keepers out of it, and a team that traded its pick away pays none.
     const owned = capacity.get(r.roster_id) || new Map();
     const used = new Map();
-    const free = (round) => (owned.get(round) || 0) - (used.get(round) || 0) > 0;
     const list = predictedForRoster(r.roster_id)
       .slice()
       .sort((a, b) => (a.cost - b.cost) || ((b.gain || 0) - (a.gain || 0)));
     for (const k of list) {
-      let round = k.cost;
-      let bumped = false;
-      if (!free(round)) {
-        let up = round - 1;
-        while (up >= 1 && !free(up)) up -= 1;
-        let down = round + 1;
-        while (down <= rounds && !free(down)) down += 1;
-        if (up >= 1) round = up;
-        else if (down <= rounds) round = down;
-        else round = null;
-        bumped = true;
-        conflicts.push({ team: teamName(r.roster_id), name: k.name, from: k.cost, to: round });
+      const round = k.cost;
+      const held = owned.get(round) || 0;
+      if (held - (used.get(round) || 0) <= 0) {
+        blocked.push({
+          team: teamName(r.roster_id),
+          name: k.name,
+          round,
+          reason: held === 0 ? 'no pick in that round' : 'that pick is already paying for another keeper',
+        });
+        continue;
       }
-      if (round === null) continue;
       used.set(round, (used.get(round) || 0) + 1);
-      assignments.set(k.playerId, { round, bumped });
+      assignments.set(k.playerId, { round });
     }
   }
-  return { assignments, conflicts };
+  return { assignments, blocked };
 }
 
 /* ------------------------------------------------------------- board model */
@@ -659,7 +670,7 @@ function buildBoard(opts) {
   const teams = teamCount();
   const rounds = roundCount();
   const actual = actualPickMap();
-  const { assignments, conflicts } = opts.useKeepers ? assignKeeperRounds() : { assignments: new Map(), conflicts: [] };
+  const { assignments, blocked } = opts.useKeepers ? assignKeeperRounds() : { assignments: new Map(), blocked: [] };
 
   // "ownerRosterId:round" -> keepers waiting to be placed on a pick that team
   // actually holds. A team that traded its 5th away cannot pay a 5th for a
@@ -670,7 +681,7 @@ function buildBoard(opts) {
     if (!k) continue;
     const key = k.rosterId + ':' + info.round;
     if (!keeperQueue.has(key)) keeperQueue.set(key, []);
-    keeperQueue.get(key).push(Object.assign({}, k, { bumped: info.bumped }));
+    keeperQueue.get(key).push(Object.assign({}, k));
   }
 
   const taken = draftedKeys();
@@ -716,7 +727,7 @@ function buildBoard(opts) {
           cell = Object.assign({}, base, {
             kind: 'keeper',
             name: k.name, pos: k.pos, nflTeam: k.team,
-            bumped: k.bumped, cost: k.cost, rank: k.rank,
+            cost: k.cost, rank: k.rank,
           });
         } else if (opts.project) {
           const next = pool[poolIdx];
@@ -741,7 +752,7 @@ function buildBoard(opts) {
       orphans.push({ team: teamName(k.rosterId), name: k.name, round: Number(key.split(':')[1]) });
     }
   }
-  return { cells, conflicts, assignments, orphans };
+  return { cells, blocked, assignments, orphans };
 }
 
 function onTheClock() {
@@ -765,16 +776,16 @@ function renderBoard() {
   }
   const useKeepers = $('#optKeepers').checked;
   const project = $('#optProject').checked;
-  const { cells, conflicts, orphans } = buildBoard({ useKeepers, project });
+  const { cells, blocked, orphans } = buildBoard({ useKeepers, project });
   const s2r = slotToRoster();
   const clock = onTheClock();
 
-  if (conflicts.length) {
-    host.appendChild(el('div', { class: 'notice' }, [
-      el('strong', { text: 'Keeper round conflicts auto-resolved: ' }),
-      conflicts.map((c) => c.team + ' — ' + c.name + ' ' + ordinal(c.from) + ' → ' + ordinal(c.to)).join('; ')
-        + '. That team had no pick left in the round — either another keeper already claimed it '
-        + 'or it was traded away — so the keeper slid to the nearest round it still holds.',
+  if (blocked.length) {
+    host.appendChild(el('div', { class: 'notice err' }, [
+      el('strong', { text: 'Cannot be kept: ' }),
+      blocked.map((c) => c.team + ' — ' + c.name + ' (' + ordinal(c.round) + ', ' + c.reason + ')').join('; ')
+        + '. A keeper has to be paid for in his exact cost round, so these are not on the board. '
+        + 'Drop one of the clashing keepers on the Keeper Sim tab.',
     ]));
   }
 
@@ -1185,7 +1196,7 @@ function renderSim() {
   const host = $('#simHost');
   host.replaceChildren();
 
-  const { assignments, conflicts } = assignKeeperRounds();
+  const { assignments, blocked } = assignKeeperRounds();
   const totalKept = assignments.size;
 
   host.appendChild(el('div', { class: 'card' }, [
@@ -1199,8 +1210,9 @@ function renderSim() {
       el('span', { class: 'muted', text: totalKept + ' keepers across ' + S.rosters.length + ' teams · '
         + totalKept + ' of ' + (roundCount() * teamCount()) + ' picks consumed' }),
     ]),
-    conflicts.length ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'Round conflicts: '
-      + conflicts.map((c) => c.team + ' ' + c.name + ' ' + ordinal(c.from) + '→' + ordinal(c.to)).join('; ') }) : null,
+    blocked.length ? el('p', { class: 'sub bad', style: 'margin-top:8px', text: 'Cannot be kept — a keeper must be paid '
+      + 'for in his exact round: ' + blocked.map((c) => c.team + ' ' + c.name + ' (' + ordinal(c.round) + ')').join('; ')
+      + '. Untick one of each clashing pair.' }) : null,
   ]));
 
   const cards = el('div', { class: 'grid-cards' });
@@ -1235,8 +1247,9 @@ function renderSim() {
           el('span', { class: 'n', text: k.name }),
           el('span', { class: 'm' }, [
             posChip(k.pos), ' ' + (k.team || 'FA') + ' · projects ' + marketLabel(k.projRound)
-            + ', costs ' + ordinal(k.cost)
-            + (assigned && assigned.bumped ? ' → ' + ordinal(assigned.round) : ''),
+            + ', costs ' + ordinal(k.cost),
+            on && !assigned ? el('span', { class: 'bad', style: 'font-weight:600',
+              text: ' · no ' + ordinal(k.cost) + ' left to pay with' }) : null,
           ]),
         ]),
         el('span', {
