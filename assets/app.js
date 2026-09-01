@@ -564,24 +564,53 @@ function predictedForRoster(rosterId) {
  * cost the same round collide, so the cheaper-valued one slides to the next
  * open earlier round (and, failing that, to the next open later round).
  */
+/**
+ * How many picks each roster actually holds in each round, after trades.
+ * Every roster starts with one pick per round at its own slot; a trade moves
+ * that pick's ownership, so a team can hold two picks in a round and none in
+ * another. Returns rosterId -> Map(round -> count).
+ */
+function pickCapacity() {
+  const rounds = roundCount();
+  const owners = pickOwnerMap();
+  const cap = new Map();
+  const slots = rosterToSlot();
+  for (const r of S.rosters) {
+    if (!slots[r.roster_id]) continue;
+    for (let round = 1; round <= rounds; round += 1) {
+      const owner = owners.get(round + ':' + r.roster_id) || r.roster_id;
+      if (!cap.has(owner)) cap.set(owner, new Map());
+      const m = cap.get(owner);
+      m.set(round, (m.get(round) || 0) + 1);
+    }
+  }
+  return cap;
+}
+
 function assignKeeperRounds() {
   const rounds = roundCount();
   const assignments = new Map(); // playerId -> {round, bumped}
   const conflicts = [];
+  const capacity = pickCapacity();
 
   for (const r of S.rosters) {
-    const taken = new Set();
+    // Count picks per round rather than marking rounds used: a team holding two
+    // picks in a round can pay for two keepers out of it, and a team that traded
+    // its pick away can pay for none.
+    const owned = capacity.get(r.roster_id) || new Map();
+    const used = new Map();
+    const free = (round) => (owned.get(round) || 0) - (used.get(round) || 0) > 0;
     const list = predictedForRoster(r.roster_id)
       .slice()
       .sort((a, b) => (a.cost - b.cost) || ((b.gain || 0) - (a.gain || 0)));
     for (const k of list) {
       let round = k.cost;
       let bumped = false;
-      if (taken.has(round)) {
+      if (!free(round)) {
         let up = round - 1;
-        while (up >= 1 && taken.has(up)) up -= 1;
+        while (up >= 1 && !free(up)) up -= 1;
         let down = round + 1;
-        while (down <= rounds && taken.has(down)) down += 1;
+        while (down <= rounds && !free(down)) down += 1;
         if (up >= 1) round = up;
         else if (down <= rounds) round = down;
         else round = null;
@@ -589,7 +618,7 @@ function assignKeeperRounds() {
         conflicts.push({ team: teamName(r.roster_id), name: k.name, from: k.cost, to: round });
       }
       if (round === null) continue;
-      taken.add(round);
+      used.set(round, (used.get(round) || 0) + 1);
       assignments.set(k.playerId, { round, bumped });
     }
   }
@@ -744,7 +773,8 @@ function renderBoard() {
     host.appendChild(el('div', { class: 'notice' }, [
       el('strong', { text: 'Keeper round conflicts auto-resolved: ' }),
       conflicts.map((c) => c.team + ' — ' + c.name + ' ' + ordinal(c.from) + ' → ' + ordinal(c.to)).join('; ')
-        + '. Two keepers wanted the same round, so the second slid to the nearest open one.',
+        + '. That team had no pick left in the round — either another keeper already claimed it '
+        + 'or it was traded away — so the keeper slid to the nearest round it still holds.',
     ]));
   }
 

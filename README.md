@@ -94,10 +94,13 @@ slides to another round, so it is flagged for you to settle.
   first-rounders. Undrafted players cost a **14th**.
 - Only players on the **end-of-season roster** are eligible.
 
-Two rounds can collide — a team keeping both its 1st and 2nd rounders owes two
-1sts. The app slides the second keeper to the nearest open *earlier* round, or
-later if there is no earlier one, and prints exactly what it did above the
-board. Confirm that tiebreak matches your league's house rule.
+Two keepers can want the same round — a team keeping both its 1st and 2nd
+rounders owes two 1sts. Whether that is actually a collision depends on how many
+picks the team holds in that round: two picks in a round pays for two keepers,
+and a round traded away pays for none. When a keeper genuinely has no pick left,
+it slides to the nearest round the team still holds, preferring earlier, and the
+board prints exactly what it did. Confirm that tiebreak matches your league's
+house rule.
 
 ### If Sleeper never flagged your keepers
 
