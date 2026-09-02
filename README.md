@@ -211,8 +211,8 @@ python3 scripts/build_rankings.py
 The UDK app re-ranks through the summer while the CSV export does not, so
 `data/raw/tiers_<pos>.csv` overlays fresher rank, tier, ADP, team and bye on top
 of an export. Columns are `Rank,Name,Team,Bye,ADP,Tier`; a missing file just
-means that position keeps its export. QB and RB are current from the app; WR and
-TE still come from the export.
+means that position keeps its export. QB, RB and WR are current from the app; TE
+still comes from the export.
 
 Projections and the writeups always come from the export, because the app screens
 do not carry them. Two things follow:
@@ -223,7 +223,11 @@ do not carry them. Two things follow:
   places — the projection is stale and gets re-estimated the same way. Josh
   Jacobs is the live example: the export projects him RB13, the app has him
   RB84, so his 234.6 points would otherwise have made him the best value on the
-  board.
+  board. Seven players across QB/RB/WR are currently estimated.
+
+An ADP past the end of the draft (Cedric Tillman goes 56.07) reads as
+*undrafted* rather than as a deep bargain, and makes a player a near-certainty
+to survive to your next pick.
 
 Estimated projections carry an asterisk in the Available table and are labelled
 in the player pop-up. The rebuild prints every one it makes, along with any name
