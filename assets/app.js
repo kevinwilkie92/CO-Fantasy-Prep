@@ -42,7 +42,11 @@ const S = {
   rankings: [],
   byKey: new Map(),     // normalized name -> ranking row
   keepers: new Map(),   // sleeper player_id -> keeper record
-  predicted: new Set(), // sleeper player_ids predicted/declared as keepers
+  predicted: new Set(), // sleeper player_ids currently treated as keepers
+  actualKeepers: new Set(), // keepers the league has actually locked in
+  unmatchedKeepers: [],   // locked keeper ids we could not resolve to a player
+  keeperMode: 'whatif',   // 'actual' once Sleeper has real keepers loaded
+  keeperTeamCount: 0,     // teams with at least one locked keeper
   overrides: {},        // player_id -> {cost, years, note}
   myRosterId: null,
   pollTimer: null,
@@ -513,13 +517,50 @@ function keepersForRoster(rosterId, eligibleOnly) {
 const MAX_KEEPERS = 3;
 
 /**
+ * Keepers the league has actually locked in. Sleeper stores them in two places
+ * depending on how the commissioner set them up: on each roster as a list of
+ * player ids, and/or as draft picks already flagged is_keeper. Read both.
+ */
+function actualKeepersByRoster() {
+  const byRoster = new Map();
+  const add = (rosterId, playerId) => {
+    const rid = Number(rosterId);
+    const pid = String(playerId);
+    if (!rid || !playerId) return;
+    if (!byRoster.has(rid)) byRoster.set(rid, new Set());
+    byRoster.get(rid).add(pid);
+  };
+  for (const r of S.rosters) {
+    for (const pid of (r.keepers || [])) add(r.roster_id, pid);
+  }
+  for (const p of S.picks) {
+    if (p.is_keeper && p.player_id) add(p.roster_id, p.player_id);
+  }
+  return byRoster;
+}
+
+/** Switch the board back to the league's real keepers. */
+function applyActualKeepers() {
+  S.predicted = new Set();
+  S.unmatchedKeepers = [];
+  for (const pid of S.actualKeepers) {
+    if (S.keepers.has(pid)) S.predicted.add(pid);
+    else S.unmatchedKeepers.push(playerName(pid));
+  }
+  S.keeperMode = 'actual';
+  persistPredicted();
+}
+
+/**
  * Card order for display. Cards show the rounds badge, so lead with rounds and
  * break ties on points. Auto-predict deliberately does not use this — it picks
  * on points, which does not mistake a deep sleeper at a 14th for a bargain.
  */
 function displayOrder(list) {
   return list.slice().sort((a, b) =>
-    ((b.surplus === null ? -99 : b.surplus) - (a.surplus === null ? -99 : a.surplus))
+    // Whoever is actually being kept sits at the top; the rest rank by value.
+    ((S.predicted.has(b.playerId) ? 1 : 0) - (S.predicted.has(a.playerId) ? 1 : 0))
+    || ((b.surplus === null ? -99 : b.surplus) - (a.surplus === null ? -99 : a.surplus))
     || ((b.gain === null ? -9999 : b.gain) - (a.gain === null ? -9999 : a.gain)));
 }
 
@@ -761,6 +802,34 @@ function onTheClock() {
   return made + 1;
 }
 
+/** One line telling you whether the board is showing real keepers or a guess. */
+function keeperSourceNotice() {
+  if (S.keeperMode === 'actual') {
+    return el('div', { class: 'notice ok' }, [
+      el('strong', { text: 'Keepers are set. ' }),
+      S.predicted.size + ' keeper' + (S.predicted.size === 1 ? '' : 's') + ' across '
+      + S.keeperTeamCount + ' teams, read from your league — not predicted.'
+      + (S.unmatchedKeepers.length
+        ? ' ' + S.unmatchedKeepers.length + ' could not be matched to a player: ' + S.unmatchedKeepers.join(', ') + '.'
+        : ''),
+    ]);
+  }
+  if (S.actualKeepers.size) {
+    return el('div', { class: 'notice' }, [
+      el('strong', { text: 'What-if set, not your real keepers. ' }),
+      'Your league has keepers set; you are looking at an edited set. ',
+      el('button', {
+        class: 'btn small', text: 'Reset to actual keepers',
+        onclick: () => { applyActualKeepers(); renderActive(); },
+      }),
+    ]);
+  }
+  return el('div', { class: 'notice' }, [
+    el('strong', { text: 'Predicted keepers. ' }),
+    'Your league has not set keepers in Sleeper yet, so these are this tool\'s best guess.',
+  ]);
+}
+
 /* -------------------------------------------------------------- rendering */
 
 function posChip(pos) {
@@ -780,12 +849,17 @@ function renderBoard() {
   const s2r = slotToRoster();
   const clock = onTheClock();
 
+  if (useKeepers) host.appendChild(keeperSourceNotice());
+
   if (blocked.length) {
     host.appendChild(el('div', { class: 'notice err' }, [
       el('strong', { text: 'Cannot be kept: ' }),
       blocked.map((c) => c.team + ' — ' + c.name + ' (' + ordinal(c.round) + ', ' + c.reason + ')').join('; ')
         + '. A keeper has to be paid for in his exact cost round, so these are not on the board. '
-        + 'Drop one of the clashing keepers on the Keeper Sim tab.',
+        + (S.keeperMode === 'actual'
+          ? 'Your league did set them, so the cost this tool worked out is probably wrong — check it '
+            + 'against the prior draft and correct it in the override editor on the Keepers tab.'
+          : 'Drop one of the clashing keepers on the Keeper Sim tab.'),
     ]));
   }
 
@@ -848,7 +922,8 @@ function renderBoard() {
   }
 
   host.appendChild(el('div', { class: 'legend' }, [
-    el('span', {}, [el('i', { style: 'background:rgba(188,140,255,.5)' }), 'predicted keeper']),
+    el('span', {}, [el('i', { style: 'background:rgba(188,140,255,.5)' }),
+      S.keeperMode === 'actual' ? 'keeper' : 'predicted keeper']),
     el('span', {}, [el('i', { style: 'background:rgba(88,166,255,.5)' }), 'your team']),
     el('span', {}, [el('i', { style: 'background:rgba(63,185,80,.5)' }), 'on the clock']),
     el('span', {}, [el('i', { style: 'background:rgba(210,153,34,.4)' }), 'projected (ADP)']),
@@ -914,7 +989,9 @@ function renderAvailable() {
   host.replaceChildren();
   const rows = availableRows();
   $('#availMeta').textContent = rows.length + ' players available'
-    + (availState.hideKeepers ? ' (predicted keepers removed)' : '');
+    + (availState.hideKeepers
+      ? (S.keeperMode === 'actual' ? ' (keepers removed)' : ' (predicted keepers removed)')
+      : '');
 
   const head = el('tr');
   for (const col of AVAIL_COLS) {
@@ -1004,6 +1081,7 @@ let keeperSort = 'rounds';
 function renderKeepers() {
   const host = $('#keeperHost');
   host.replaceChildren();
+  host.appendChild(keeperSourceNotice());
 
   if (!S.history.length) {
     host.appendChild(el('div', { class: 'notice' }, [
@@ -1099,8 +1177,10 @@ function renderKeepers() {
   // ---- per team
   const cards = el('div', { class: 'grid-cards' });
   for (const r of S.rosters.slice().sort((a, b) => teamName(a.roster_id).localeCompare(teamName(b.roster_id)))) {
-    const eligible = keepersForRoster(r.roster_id, true);
-    const blocked = keepersForRoster(r.roster_id, false).filter((k) => !k.eligible);
+    const eligible = keepersForRoster(r.roster_id, false)
+      .filter((k) => k.eligible || S.actualKeepers.has(k.playerId));
+    const blocked = keepersForRoster(r.roster_id, false)
+      .filter((k) => !k.eligible && !S.actualKeepers.has(k.playerId));
     const list = el('ul');
     for (const k of displayOrder(eligible)) {
       list.appendChild(el('li', {}, [
@@ -1111,6 +1191,8 @@ function renderKeepers() {
             + ', costs ' + ordinal(k.cost)
             + ' · ' + (k.undrafted ? 'undrafted ' + (k.lastSeason || '') : 'went ' + ordinal(k.lastRound) + ' in ' + k.lastSeason)
             + (k.yearsUsed ? ' · final keeper year' : ''),
+            S.actualKeepers.has(k.playerId)
+              ? el('span', { class: 'good', style: 'font-weight:600', text: ' · KEPT' }) : null,
           ]),
         ]),
         el('span', {
@@ -1199,27 +1281,41 @@ function renderSim() {
   const { assignments, blocked } = assignKeeperRounds();
   const totalKept = assignments.size;
 
+  host.appendChild(keeperSourceNotice());
   host.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Predict the keepers' }),
-    el('p', { class: 'sub', text: 'Auto-predict gives every team its three biggest bargains — the keepers a rational manager takes. '
+    el('h2', { text: S.keeperMode === 'actual' ? 'Keepers' : 'Predict the keepers' }),
+    el('p', { class: 'sub', text: S.keeperMode === 'actual'
+      ? 'These are your league\'s real keepers, read from Sleeper. Tick and untick only to explore '
+      + 'what-ifs — the board follows, and Reset puts the real set back.'
+      : 'Auto-predict gives every team its three biggest bargains — the keepers a rational manager takes. '
       + 'Tick and untick to model what you think your league will actually do; the draft board updates to match.' }),
     el('div', { class: 'row' }, [
-      el('button', { class: 'btn primary', text: 'Auto-predict all teams', onclick: () => { autoPredict(); renderActive(); } }),
-      el('button', { class: 'btn', text: 'Clear all', onclick: () => { S.predicted.clear(); persistPredicted(); renderActive(); } }),
+      S.actualKeepers.size
+        ? el('button', {
+          class: 'btn' + (S.keeperMode === 'actual' ? '' : ' primary'), text: 'Reset to actual keepers',
+          onclick: () => { applyActualKeepers(); renderActive(); },
+        })
+        : null,
+      el('button', { class: 'btn' + (S.actualKeepers.size ? '' : ' primary'), text: 'Auto-predict all teams', onclick: () => { autoPredict(); S.keeperMode = 'whatif'; renderActive(); } }),
+      el('button', { class: 'btn', text: 'Clear all', onclick: () => { S.predicted.clear(); S.keeperMode = 'whatif'; persistPredicted(); renderActive(); } }),
       el('span', { class: 'spacer' }),
       el('span', { class: 'muted', text: totalKept + ' keepers across ' + S.rosters.length + ' teams · '
         + totalKept + ' of ' + (roundCount() * teamCount()) + ' picks consumed' }),
     ]),
     blocked.length ? el('p', { class: 'sub bad', style: 'margin-top:8px', text: 'Cannot be kept — a keeper must be paid '
       + 'for in his exact round: ' + blocked.map((c) => c.team + ' ' + c.name + ' (' + ordinal(c.round) + ')').join('; ')
-      + '. Untick one of each clashing pair.' }) : null,
+      + (S.keeperMode === 'actual' ? '. The league set these, so check the cost in the override editor.'
+        : '. Untick one of each clashing pair.') }) : null,
   ]));
 
   const cards = el('div', { class: 'grid-cards' });
   const r2s = rosterToSlot();
   const sorted = S.rosters.slice().sort((a, b) => (r2s[a.roster_id] || 99) - (r2s[b.roster_id] || 99));
   for (const r of sorted) {
-    const eligible = keepersForRoster(r.roster_id, true);
+    // Sleeper's word beats our inference: a player the league actually kept
+    // stays on the list even if we worked out his keeper clock had run out.
+    const eligible = keepersForRoster(r.roster_id, false)
+      .filter((k) => k.eligible || S.actualKeepers.has(k.playerId));
     const chosen = predictedForRoster(r.roster_id);
     const list = el('ul');
     for (const k of displayOrder(eligible)) {
@@ -1237,6 +1333,7 @@ function renderSim() {
           } else {
             S.predicted.delete(k.playerId);
           }
+          S.keeperMode = 'whatif';
           persistPredicted();
           renderActive();
         },
@@ -1248,6 +1345,9 @@ function renderSim() {
           el('span', { class: 'm' }, [
             posChip(k.pos), ' ' + (k.team || 'FA') + ' · projects ' + marketLabel(k.projRound)
             + ', costs ' + ordinal(k.cost),
+            S.actualKeepers.has(k.playerId)
+              ? el('span', { class: 'good', style: 'font-weight:600', text: ' · KEPT' }) : null,
+            !k.eligible ? el('span', { class: 'warn', text: ' · we had him at 2 years used' }) : null,
             on && !assigned ? el('span', { class: 'bad', style: 'font-weight:600',
               text: ' · no ' + ordinal(k.cost) + ' left to pay with' }) : null,
           ]),
@@ -1554,30 +1654,22 @@ async function boot(leagueId, opts) {
   computeValue();
   buildKeepers();
 
-  const saved = lsGet(LS.predicted, null);
-  if (saved && saved.length) S.predicted = new Set(saved.filter((pid) => S.keepers.has(pid)));
-  else autoPredict();
+  // Real keepers beat any guess, including a stale one saved in this browser,
+  // so they are re-read from Sleeper on every load rather than restored.
+  const byRoster = actualKeepersByRoster();
+  S.actualKeepers = new Set();
+  S.keeperTeamCount = byRoster.size;
+  for (const set of byRoster.values()) for (const pid of set) S.actualKeepers.add(pid);
 
-  // Anything the league already flagged as a keeper is settled. For those teams
-  // the declared set replaces our guess outright rather than stacking on top of
-  // it, which would push them over the keeper limit.
-  const declaredByRoster = new Map();
-  for (const p of S.picks) {
-    if (!p.is_keeper || !p.player_id) continue;
-    const rid = Number(p.roster_id);
-    if (!declaredByRoster.has(rid)) declaredByRoster.set(rid, []);
-    declaredByRoster.get(rid).push(String(p.player_id));
-  }
-  for (const [rid, pids] of declaredByRoster.entries()) {
-    for (const k of S.keepers.values()) if (k.rosterId === rid) S.predicted.delete(k.playerId);
-    for (const pid of pids) if (S.keepers.has(pid)) S.predicted.add(pid);
-  }
-  enforceKeeperCap();
-  persistPredicted();
-
-  // Once real keeper picks are on the board they say it better than a guess.
-  if (declaredByRoster.size && S.draft && S.draft.status !== 'pre_draft') {
-    $('#optKeepers').checked = false;
+  if (S.actualKeepers.size) {
+    applyActualKeepers();
+  } else {
+    S.keeperMode = 'whatif';
+    const saved = lsGet(LS.predicted, null);
+    if (saved && saved.length) S.predicted = new Set(saved.filter((pid) => S.keepers.has(pid)));
+    else autoPredict();
+    enforceKeeperCap();
+    persistPredicted();
   }
 
   populateTeamSelect();

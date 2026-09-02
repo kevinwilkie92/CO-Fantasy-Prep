@@ -61,10 +61,33 @@ row for the full Ultimate Draft Kit writeup, projection, risk/upside and ADP.
 **Keepers** — every player eligible to be kept, by team, plus a league-wide
 *best keeper values* table.
 
-**Keeper Sim** — tick the keepers you think each team will declare and watch the
-board redraw. *Auto-predict* fills in every team's three biggest bargains as a
-starting point. If you have picked your team, it also shows which of your rounds
-survive and who the pool projects will be there when you pick.
+**Keeper Sim** — once your league sets keepers this shows the real ones, read
+from Sleeper. Before that it predicts them, and *Auto-predict* fills in every
+team's three biggest bargains as a starting point. Either way, ticking and
+unticking redraws the board, and if you have picked your team it shows which of
+your rounds survive and who the pool projects will be there when you pick.
+
+## Where keepers come from
+
+Sleeper stores locked keepers in two places depending on how the commissioner
+set them up — a `keepers` list on each roster, and/or draft picks already
+flagged as keepers. Both are read, so as soon as your league locks them the
+board switches from predicting to showing the real thing and says so in green:
+*"Keepers are set. 33 keepers across 12 teams, read from your league — not
+predicted."*
+
+Real keepers are re-read on every load and always win, including over a stale
+guess saved in your browser from before they were set. Editing the set is still
+allowed for what-ifs — the banner turns amber to say you are off the real
+data, and *Reset to actual keepers* puts it back.
+
+Sleeper's word also beats this tool's own arithmetic: a player your league kept
+stays listed even if the two-year clock worked out here says he was burned, and
+he is flagged rather than hidden. If a locked keeper cannot be paid for in his
+cost round, the board says so and points at the override editor, because at that
+point the cost derived from the prior draft is the thing that is probably wrong.
+
+## Keeper rules encoded
 
 ## Traded picks
 
@@ -83,8 +106,6 @@ trade can cover a keeper, and a round traded away cannot. If a predicted keeper
 needs a round its team no longer holds, the board says so above the grid rather
 than quietly placing him — leagues differ on whether that keeper is forfeited or
 slides to another round, so it is flagged for you to settle.
-
-## Keeper rules encoded
 
 - Up to **3 keepers** per team.
 - A player may be kept **two years running, then he goes back in the pool**. The
