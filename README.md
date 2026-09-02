@@ -284,10 +284,15 @@ snapshot, not source.
 
 The palette, the pill tabs, the notched green tier banners and the red/green
 risk and upside bars are lifted from the UDK app so the two read the same way,
-down to its `#42ab4c` green on black. The pool rows follow the app's shape too —
-rank in a gutter, name over a quiet `POS TEAM (BYE)` line — with the projection
-and value columns this tool adds on the right. Tier banners appear once you
-filter to a single position, since a tier only means something within one.
+down to its `#42ab4c` green on black. Tier banners appear once you filter to a
+single position, since a tier only means something within one.
+
+One player cell is used everywhere a player is named — the board, the pool, the
+keeper tables, the rosters, the target list and the pop-up — so a player looks
+the same wherever you meet him: name in bold over a quiet `POS TEAM (BYE)` line,
+with whatever that view needs trailing it. Section labels are uppercase and
+tracked, ratings are always bars rather than bare numbers, and the green accent
+is spent sparingly: on the active tab, on tier banners, and on your own team.
 
 ## Layout
 

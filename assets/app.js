@@ -986,6 +986,23 @@ function posChip(pos) {
   return el('span', { class: 'pos ' + pos, text: pos || '—' });
 }
 
+/**
+ * The app's player cell: name in bold over a quiet POS TEAM (BYE) line, with
+ * whatever else that view needs trailing it. Every list of players uses this so
+ * a player reads the same on the board, the pool, the keepers and the rosters.
+ */
+function playerLine(o) {
+  const tail = (o.tags || []).filter(Boolean).map(
+    (t) => (typeof t === 'string' ? el('span', { class: 'dim', text: t }) : t));
+  return el('div', { class: 'pl' }, [
+    el('span', { class: 'n', text: o.name }),
+    el('span', { class: 's' }, [
+      o.pos ? posChip(o.pos) : null,
+      (o.team || 'FA') + (o.bye ? ' (' + o.bye + ')' : ''),
+    ].concat(tail)),
+  ]);
+}
+
 function renderBoard() {
   const host = $('#boardHost');
   host.replaceChildren();
@@ -1364,9 +1381,10 @@ function renderAssistant() {
     const body = el('tbody');
     for (const r of rows) {
       body.appendChild(el('tr', { class: r.gone ? 'taken' : '', onclick: () => showPlayer(r.p) }, [
-        el('td', { class: 'name', text: r.p.name }),
-        el('td', {}, [posChip(r.p.pos)]),
-        el('td', { class: 'muted', text: (r.p.team || '—') + ' · T' + (r.p.tier || '?') }),
+        el('td', {}, [playerLine({
+          name: r.p.name, pos: r.p.pos, team: r.p.team, bye: r.p.bye,
+          tags: [r.p.tier ? 'T' + r.p.tier : null],
+        })]),
         el('td', { class: 'num right muted', text: r.p.adp || '—' }),
         el('td', { class: 'num right ' + (r.gone ? 'dim' : oddsClass(r.odds || 0)) ,
           text: r.gone ? 'gone' : (next ? Math.round(r.odds * 100) + '%' : '—') }),
@@ -1437,15 +1455,10 @@ function renderAvailable() {
       onclick: (e) => { e.stopPropagation(); toggleTarget(p.key); renderAvailable(); },
     })]));
     tr.appendChild(el('td', { class: 'num right dim c-rank', text: p.vorRank }));
-    tr.appendChild(el('td', { class: 'c-player' }, [el('div', { class: 'pl' }, [
-      el('span', { class: 'n', text: p.name }),
-      el('span', { class: 's' }, [
-        posChip(p.pos),
-        (p.team || 'FA') + (p.bye ? ' (' + p.bye + ')' : ''),
-        el('span', { class: 'dim', text: p.pos + (p.posRank || '') }),
-        p.tier ? el('span', { class: 'dim', text: 'T' + p.tier }) : null,
-      ]),
-    ])]));
+    tr.appendChild(el('td', { class: 'c-player' }, [playerLine({
+      name: p.name, pos: p.pos, team: p.team, bye: p.bye,
+      tags: [p.pos + (p.posRank || ''), p.tier ? 'T' + p.tier : null],
+    })]));
     tr.appendChild(el('td', { class: 'num right muted', text: p.adp || '—' }));
     tr.appendChild(el('td', {
       class: 'num right' + (p.estimated ? ' muted' : ''),
@@ -1472,11 +1485,13 @@ function showPlayer(p) {
   const backdrop = el('div', { class: 'player-modal-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, [
     el('div', { class: 'player-modal' }, [
       el('h3', { text: p.name }),
-      el('p', { class: 'sub' }, [
-        posChip(p.pos), ' · ' + (p.team || 'FA') + ' · Bye ' + (p.bye || '—')
-        + ' · ' + p.pos + (p.posRank || '') + ' · Tier ' + (p.tier || '?'),
+      el('div', { class: 'modal-meta' }, [
+        posChip(p.pos),
+        el('span', { text: (p.team || 'FA') + (p.bye ? ' (' + p.bye + ')' : '') }),
+        el('span', { class: 'dim', text: p.pos + (p.posRank || '') }),
+        p.tier ? el('span', { class: 'tier-chip', text: 'TIER ' + p.tier }) : null,
         p.beyondList
-          ? el('span', { class: 'warn', text: ' · past the end of the app\'s ranked list' })
+          ? el('span', { class: 'warn', text: 'past the end of the app\'s ranked list' })
           : null,
       ]),
       el('dl', { class: 'kv' }, [
@@ -1484,7 +1499,8 @@ function showPlayer(p) {
         el('dd', { text: fmt(p.points) + (p.estimated ? '  (estimated from his rank)' : '') }),
         el('dt', { text: 'Value over replacement' }), el('dd', { text: fmt(p.vor) + '  (overall #' + p.vorRank + ')' }),
         el('dt', { text: 'ADP' }), el('dd', { text: p.adp ? p.adp + '  (pick ' + p.adpPick + ')' : 'undrafted' }),
-        el('dt', { text: 'Risk / Upside' }), el('dd', { text: fmt(p.risk) + ' / ' + fmt(p.upside) }),
+        el('dt', { text: 'Risk' }), el('dd', {}, [ratingBar(p.risk, 'risk'), ' ' + fmt(p.risk)]),
+        el('dt', { text: 'Upside' }), el('dd', {}, [ratingBar(p.upside, 'up'), ' ' + fmt(p.upside)]),
         k ? el('dt', { text: 'Keeper' }) : null,
         k ? el('dd', {
           text: teamName(k.rosterId) + ' · projects ' + marketLabel(k.projRound)
@@ -1543,9 +1559,11 @@ function renderKeepers() {
   for (const k of all.slice(0, 40)) {
     const tr = el('tr', { onclick: () => showPlayer(k.rank) });
     tr.style.cursor = 'pointer';
-    tr.appendChild(el('td', { class: 'name', text: k.name }));
-    tr.appendChild(el('td', {}, [posChip(k.pos)]));
-    tr.appendChild(el('td', { class: 'muted', text: k.team || '—' }));
+    tr.appendChild(el('td', {}, [playerLine({
+      name: k.name, pos: k.pos, team: k.team, bye: k.rank && k.rank.bye,
+      tags: [k.rank ? k.pos + k.rank.posRank : null, S.actualKeepers.has(k.playerId)
+        ? el('span', { class: 'good', style: 'font-weight:700', text: 'KEPT' }) : null],
+    })]));
     tr.appendChild(el('td', { class: 'muted', text: teamName(k.rosterId) }));
     tr.appendChild(el('td', {
       class: 'num right', title: k.rank ? 'projected #' + k.rank.vorRank + ' overall' : '',
@@ -1594,8 +1612,7 @@ function renderKeepers() {
     el('div', { class: 'table-wrap' }, [
       el('table', {}, [
         el('thead', {}, [el('tr', {}, [
-          el('th', { text: 'Player' }), el('th', { text: 'Pos' }), el('th', { text: 'Tm' }),
-          el('th', { text: 'Fantasy team' }),
+          el('th', { text: 'Player' }), el('th', { text: 'Fantasy team' }),
           el('th', { class: 'right', text: 'Proj Rd' }), el('th', { class: 'right', text: 'Cost' }),
           el('th', { class: 'right', text: 'Rounds' }), el('th', { class: 'right', text: 'Points' }),
           el('th', { class: 'right', text: 'ADP Rd' }), el('th', { class: 'right', text: 'Board' }),
@@ -1878,12 +1895,10 @@ function renderTeams() {
     const list = el('ul');
     for (const pos of POS_ORDER) {
       for (const p of (byPos[pos] || [])) {
-        list.appendChild(el('li', {}, [
-          el('div', { class: 'who' }, [
-            el('span', { class: 'n', text: p.name }),
-            el('span', { class: 'm' }, [posChip(p.pos), ' ' + (p.rank ? 'tier ' + (p.rank.tier || '?') : '')]),
-          ]),
-        ]));
+        list.appendChild(el('li', {}, [playerLine({
+          name: p.name, pos: p.pos, team: p.rank && p.rank.team, bye: p.rank && p.rank.bye,
+          tags: [p.rank && p.rank.tier ? 'T' + p.rank.tier : null],
+        })]));
       }
     }
     if (!list.childNodes.length) list.appendChild(el('li', { class: 'empty', text: 'Nothing yet.' }));
