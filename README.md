@@ -54,9 +54,26 @@ is outlined, and picks you own are tinted. Two toggles: overlay the keepers you
 expect teams to declare, and fill every open pick with an ADP guess at who is
 still there.
 
-**Available** — everyone not yet drafted, sortable on any column, searchable,
-with predicted keepers removed by default so the pool reflects reality. Click a
-row for the full Ultimate Draft Kit writeup, projection, risk/upside and ADP.
+**Available** — the tab to live on during the draft. Above the pool sits a strip
+answering what you need to know between picks:
+
+- **Your next picks** — the next two you actually own, and how far away they are
+- **Still to fill** — the starting slots you have not covered, plus a warning
+  when three or more starters share a bye week
+- **Tier cliffs** — how many players are left in the shallowest live tier at each
+  position, red at two or fewer. This is the reach signal: when a tier is down
+  to its last man, the next pick there is a visibly worse player
+- **Runs** — "Last 10 picks: 8 QB, 2 WR — run on QB"
+- **Targets** — star anyone in the table and they appear here with the odds they
+  last until your next pick, most at risk first
+
+Below that is the pool itself: everyone not yet drafted, sortable on any column,
+searchable, keepers removed by default. Click a row for the full Ultimate Draft
+Kit writeup, projection, risk/upside and ADP.
+
+**Teams** — every roster, what it already holds and which starting slots it
+still needs. Read the teams picking between you and your next pick to work out
+whether your target survives.
 
 **Keepers** — every player eligible to be kept, by team, plus a league-wide
 *best keeper values* table.
@@ -66,6 +83,15 @@ from Sleeper. Before that it predicts them, and *Auto-predict* fills in every
 team's three biggest bargains as a starting point. Either way, ticking and
 unticking redraws the board, and if you have picked your team it shows which of
 your rounds survive and who the pool projects will be there when you pick.
+
+## Survival odds
+
+The percentage next to a target is the chance he lasts until your next pick,
+read off ADP with a deliberately wide spread — ADP is a mean and real rooms
+deviate from it hard. Treat it as a lean, not a probability. Under about 40%
+means take him now; over about 70% means you can spend this pick elsewhere and
+still expect him back. It ignores what other teams actually need, which is what
+the Teams tab is for.
 
 ## Where keepers come from
 

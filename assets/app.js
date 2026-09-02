@@ -15,6 +15,7 @@ const LS = {
   players: 'cofp.playersNfl',
   overrides: 'cofp.overrides',
   predicted: 'cofp.predicted',
+  targets: 'cofp.targets',
   keeperSort: 'cofp.keeperSort',
   snapshot: 'cofp.snapshot',
 };
@@ -985,6 +986,138 @@ function renderBoard() {
       : 'Pre-draft — ' + roundCount() + ' rounds, ' + teamCount() + ' teams, draft order set.');
 }
 
+/* ------------------------------------------------------- draft assistant */
+
+/** Players already off the board: drafted, plus keepers when asked. */
+function goneKeys(includeKeepers) {
+  const gone = draftedKeys();
+  if (includeKeepers) {
+    for (const pid of S.predicted) gone.add(normName(playerName(pid)));
+  }
+  return gone;
+}
+
+/** Every pick a team still has to make, keepers and completed picks removed. */
+function openPicksFor(rosterId, board) {
+  const out = [];
+  for (const row of board.cells) {
+    for (const cell of row) {
+      if (cell.rosterId !== rosterId) continue;
+      if (cell.kind === 'pick' || cell.kind === 'keeper') continue;
+      out.push(cell);
+    }
+  }
+  return out.sort((a, b) => a.pickNo - b.pickNo);
+}
+
+/** Players a team already holds for this draft: keepers plus anyone drafted. */
+function playersHeldBy(rosterId) {
+  const out = [];
+  const seen = new Set();
+  const add = (pid) => {
+    pid = String(pid);
+    if (seen.has(pid)) return;
+    seen.add(pid);
+    out.push({ playerId: pid, name: playerName(pid), pos: playerPos(pid), rank: rankingFor(pid) });
+  };
+  for (const p of S.picks) {
+    if (p.player_id && Number(p.roster_id) === rosterId) add(p.player_id);
+  }
+  for (const pid of S.predicted) {
+    const k = S.keepers.get(pid);
+    if (k && k.rosterId === rosterId) add(pid);
+  }
+  return out;
+}
+
+/**
+ * Fit a team's players into its starting lineup, exact positions first so a
+ * flex is only spent on someone who has nowhere else to go.
+ */
+function lineupFor(rosterId) {
+  const slots = starterSlots().map((slot) => ({ slot, player: null }));
+  const pool = playersHeldBy(rosterId);
+  for (const entry of slots) {
+    if (FLEX_SETS[entry.slot]) continue;
+    const i = pool.findIndex((p) => p.pos === entry.slot);
+    if (i >= 0) entry.player = pool.splice(i, 1)[0];
+  }
+  for (const entry of slots) {
+    const set = FLEX_SETS[entry.slot];
+    if (!set) continue;
+    const i = pool.findIndex((p) => set.indexOf(p.pos) !== -1);
+    if (i >= 0) entry.player = pool.splice(i, 1)[0];
+  }
+  const byes = {};
+  for (const entry of slots) {
+    const bye = entry.player && entry.player.rank && entry.player.rank.bye;
+    if (bye) byes[bye] = (byes[bye] || 0) + 1;
+  }
+  return {
+    slots,
+    bench: pool,
+    needs: slots.filter((e) => !e.player).map((e) => e.slot),
+    byeClashes: Object.entries(byes).filter(([, n]) => n >= 3).map(([week, n]) => ({ week, n })),
+  };
+}
+
+/**
+ * The shallowest tier still on the board at each position. When only one or two
+ * players are left in a tier, the next pick there costs a visibly worse player,
+ * which is the moment to reach.
+ */
+function tierCliffs() {
+  const gone = goneKeys(true);
+  const out = [];
+  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+    const list = S.rankings
+      .filter((p) => p.pos === pos && !gone.has(p.key) && p.tier)
+      .sort((a, b) => a.tier - b.tier || a.vorRank - b.vorRank);
+    if (!list.length) continue;
+    const tier = list[0].tier;
+    out.push({ pos, tier, left: list.filter((p) => p.tier === tier).length, best: list[0] });
+  }
+  return out;
+}
+
+/** Positions being hoovered up right now. */
+function positionalRun(window) {
+  const recent = S.picks
+    .filter((p) => p.player_id && p.pick_no)
+    .sort((a, b) => b.pick_no - a.pick_no)
+    .slice(0, window || 10);
+  const counts = {};
+  for (const p of recent) {
+    const pos = playerPos(String(p.player_id));
+    if (pos) counts[pos] = (counts[pos] || 0) + 1;
+  }
+  return { total: recent.length, counts };
+}
+
+/**
+ * Rough odds a player is still there at a given pick, read off ADP. The spread
+ * is wide on purpose: ADP is a mean, and real rooms deviate from it hard.
+ */
+function survivalOdds(player, pickNo) {
+  if (!pickNo) return null;
+  const adp = projectionScore(player);
+  const spread = 9;
+  const odds = 1 / (1 + Math.exp(-(adp - pickNo) / spread));
+  return Math.max(0.01, Math.min(0.99, odds));
+}
+
+function targetKeys() {
+  if (!S.targets) S.targets = new Set(lsGet(LS.targets, []) || []);
+  return S.targets;
+}
+
+function toggleTarget(key) {
+  const set = targetKeys();
+  if (set.has(key)) set.delete(key);
+  else set.add(key);
+  lsSet(LS.targets, Array.from(set));
+}
+
 /* ------------------------------------------------------ available players */
 
 const availState = { sort: 'vorRank', dir: 1, pos: 'ALL', q: '', hideKeepers: true };
@@ -1026,16 +1159,127 @@ const AVAIL_COLS = [
   { key: 'upside', label: 'Upside', dir: -1, cls: 'num right' },
 ];
 
+function oddsClass(o) {
+  return o >= 0.7 ? 'good' : o >= 0.4 ? 'warn' : 'bad';
+}
+
+/** The strip you actually read between picks: needs, cliffs, runs, targets. */
+function renderAssistant() {
+  const wrap = el('div', { class: 'card assistant' });
+  if (!S.myRosterId) {
+    wrap.appendChild(el('p', { class: 'sub', style: 'margin:0',
+      text: 'Pick your team above to see roster needs, tier cliffs and who survives to your next pick.' }));
+    return wrap;
+  }
+
+  const board = buildBoard({ useKeepers: true, project: false });
+  const made = S.picks.filter((p) => p.player_id).length;
+  const onClock = made + 1;
+  const mine = openPicksFor(S.myRosterId, board).filter((c) => c.pickNo >= onClock);
+  const next = mine[0] || null;
+  const after = mine[1] || null;
+  const lineup = lineupFor(S.myRosterId);
+
+  // --- your picks + needs
+  const needs = lineup.needs.length
+    ? lineup.needs.map((slot) => el('span', { class: 'slot need', text: slot }))
+    : [el('span', { class: 'slot', text: 'starters full' })];
+
+  wrap.appendChild(el('div', { class: 'assist-row' }, [
+    el('div', { class: 'assist-block' }, [
+      el('h4', { text: 'Your next picks' }),
+      el('div', { class: 'big num' }, [
+        next ? '#' + next.pickNo : '—',
+        next ? el('span', { class: 'muted', style: 'font-size:12px;font-weight:400',
+          text: ' (rd ' + next.round + ', ' + Math.max(0, next.pickNo - onClock) + ' away)' }) : null,
+      ]),
+      el('div', { class: 'sub', style: 'margin:0',
+        text: after ? 'then #' + after.pickNo + ' (rd ' + after.round + ')' : 'no later pick' }),
+    ]),
+    el('div', { class: 'assist-block grow' }, [
+      el('h4', { text: 'Still to fill' }),
+      el('div', { class: 'starters' }, needs),
+      lineup.byeClashes.length
+        ? el('div', { class: 'sub warn', style: 'margin:6px 0 0', text: lineup.byeClashes
+          .map((b) => b.n + ' starters on bye week ' + b.week).join(' · ') })
+        : null,
+    ]),
+  ]));
+
+  // --- tier cliffs
+  const cliffs = tierCliffs();
+  wrap.appendChild(el('div', { class: 'assist-row' }, [
+    el('div', { class: 'assist-block grow' }, [
+      el('h4', { text: 'Tier cliffs' }),
+      el('div', { class: 'cliffs' }, cliffs.map((c) => el('div', {
+        class: 'cliff' + (c.left <= 2 ? ' urgent' : c.left <= 4 ? ' warnish' : ''),
+        title: 'best left: ' + c.best.name,
+      }, [
+        el('span', { class: 'pos ' + c.pos, text: c.pos }),
+        el('span', { class: 'num', text: ' T' + c.tier }),
+        el('span', { class: 'num n', text: c.left }),
+        el('span', { class: 'muted', text: c.left === 1 ? 'left' : 'left' }),
+      ]))),
+    ]),
+  ]));
+
+  // --- run alert
+  const run = positionalRun(10);
+  const hot = Object.entries(run.counts).filter(([, n]) => n >= Math.max(3, Math.ceil(run.total / 2)));
+  if (run.total >= 4) {
+    wrap.appendChild(el('p', { class: 'sub', style: 'margin:2px 0 0',
+      text: 'Last ' + run.total + ' picks: ' + Object.entries(run.counts)
+        .sort((a, b) => b[1] - a[1]).map(([pos, n]) => n + ' ' + pos).join(', ')
+        + (hot.length ? ' — run on ' + hot.map(([pos]) => pos).join(' and ') + '.' : '') }));
+  }
+
+  // --- targets
+  const keys = targetKeys();
+  if (keys.size) {
+    const gone = goneKeys(true);
+    const rows = S.rankings.filter((p) => keys.has(p.key))
+      .map((p) => ({ p, gone: gone.has(p.key), odds: survivalOdds(p, next ? next.pickNo : null) }))
+      .sort((a, b) => (a.gone ? 1 : 0) - (b.gone ? 1 : 0) || (a.odds || 0) - (b.odds || 0));
+    const body = el('tbody');
+    for (const r of rows) {
+      body.appendChild(el('tr', { class: r.gone ? 'taken' : '', onclick: () => showPlayer(r.p) }, [
+        el('td', { class: 'name', text: r.p.name }),
+        el('td', {}, [posChip(r.p.pos)]),
+        el('td', { class: 'muted', text: (r.p.team || '—') + ' · T' + (r.p.tier || '?') }),
+        el('td', { class: 'num right muted', text: r.p.adp || '—' }),
+        el('td', { class: 'num right ' + (r.gone ? 'dim' : oddsClass(r.odds || 0)) ,
+          text: r.gone ? 'gone' : (next ? Math.round(r.odds * 100) + '%' : '—') }),
+        el('td', {}, [el('button', {
+          class: 'btn small', text: '×', title: 'remove from targets',
+          onclick: (e) => { e.stopPropagation(); toggleTarget(r.p.key); renderAvailable(); },
+        })]),
+      ]));
+    }
+    wrap.appendChild(el('div', { class: 'assist-block', style: 'margin-top:10px' }, [
+      el('h4', { text: 'Targets — odds they last to ' + (next ? '#' + next.pickNo : 'your next pick') }),
+      el('div', { class: 'table-wrap' }, [el('table', {}, [body])]),
+      el('p', { class: 'sub', style: 'margin:6px 0 0',
+        text: 'Estimated from ADP, so treat it as a lean, not a probability. Below ~40% means take him now.' }),
+    ]));
+  } else {
+    wrap.appendChild(el('p', { class: 'sub', style: 'margin:6px 0 0',
+      text: 'Star players in the table below to track whether they survive to your next pick.' }));
+  }
+
+  return wrap;
+}
+
 function renderAvailable() {
   const host = $('#availHost');
   host.replaceChildren();
+  host.appendChild(renderAssistant());
   const rows = availableRows();
   $('#availMeta').textContent = rows.length + ' players available'
     + (availState.hideKeepers
       ? (S.keeperMode === 'actual' ? ' (keepers removed)' : ' (predicted keepers removed)')
       : '');
 
-  const head = el('tr');
+  const head = el('tr', {}, [el('th', { text: '' })]);
   for (const col of AVAIL_COLS) {
     const active = availState.sort === col.key;
     head.appendChild(el('th', {
@@ -1057,6 +1301,12 @@ function renderAvailable() {
     lastTier = p.tier;
     const tr = el('tr', { class: tierBreak ? 'tier-break' : '', onclick: () => showPlayer(p) });
     tr.style.cursor = 'pointer';
+    const starred = targetKeys().has(p.key);
+    tr.appendChild(el('td', {}, [el('button', {
+      class: 'star' + (starred ? ' on' : ''), title: starred ? 'remove target' : 'add target',
+      text: starred ? '★' : '☆',
+      onclick: (e) => { e.stopPropagation(); toggleTarget(p.key); renderAvailable(); },
+    })]));
     tr.appendChild(el('td', { class: 'num right dim', text: p.vorRank }));
     tr.appendChild(el('td', { class: 'name', text: p.name }));
     tr.appendChild(el('td', {}, [posChip(p.pos)]));
@@ -1455,6 +1705,67 @@ function renderSim() {
   }
 }
 
+/* ------------------------------------------------------------ teams view */
+
+function renderTeams() {
+  const host = $('#teamsHost');
+  host.replaceChildren();
+  const board = buildBoard({ useKeepers: true, project: false });
+  const made = S.picks.filter((p) => p.player_id).length;
+  const onClock = made + 1;
+  const r2s = rosterToSlot();
+
+  host.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Every roster' }),
+    el('p', { class: 'sub', style: 'margin:0', text: 'What each team already holds and which starting slots '
+      + 'they still have to fill. The needs are what they are most likely to take next — read the teams picking '
+      + 'between you and your next pick to work out whether your target survives.' }),
+  ]));
+
+  const cards = el('div', { class: 'grid-cards' });
+  const sorted = S.rosters.slice().sort((a, b) => (r2s[a.roster_id] || 99) - (r2s[b.roster_id] || 99));
+  for (const r of sorted) {
+    const lineup = lineupFor(r.roster_id);
+    const open = openPicksFor(r.roster_id, board).filter((c) => c.pickNo >= onClock);
+    const next = open[0];
+    const byPos = {};
+    for (const entry of lineup.slots) {
+      if (!entry.player) continue;
+      (byPos[entry.player.pos] = byPos[entry.player.pos] || []).push(entry.player);
+    }
+    for (const p of lineup.bench) (byPos[p.pos] = byPos[p.pos] || []).push(p);
+
+    const list = el('ul');
+    for (const pos of POS_ORDER) {
+      for (const p of (byPos[pos] || [])) {
+        list.appendChild(el('li', {}, [
+          el('div', { class: 'who' }, [
+            el('span', { class: 'n', text: p.name }),
+            el('span', { class: 'm' }, [posChip(p.pos), ' ' + (p.rank ? 'tier ' + (p.rank.tier || '?') : '')]),
+          ]),
+        ]));
+      }
+    }
+    if (!list.childNodes.length) list.appendChild(el('li', { class: 'empty', text: 'Nothing yet.' }));
+
+    cards.appendChild(el('div', { class: 'team-card' + (r.roster_id === S.myRosterId ? ' is-me' : '') }, [
+      el('header', {}, [
+        el('span', { class: 'tn', text: teamName(r.roster_id) }),
+        el('span', { class: 'muted', style: 'font-size:11px', text: 'slot ' + (r2s[r.roster_id] || '?') }),
+        el('span', { class: 'cnt', text: next ? 'next #' + next.pickNo : 'done' }),
+      ]),
+      el('div', { style: 'padding:8px 12px;border-bottom:1px solid var(--line-soft)' }, [
+        el('div', { class: 'sub', style: 'margin:0 0 4px', text: 'needs' }),
+        el('div', { class: 'starters' }, lineup.needs.length
+          ? lineup.needs.map((slot) => el('span', { class: 'slot need', text: slot }))
+          : [el('span', { class: 'slot', text: 'starters full' })]),
+      ]),
+      list,
+    ]));
+  }
+  host.appendChild(cards);
+}
+
 /* ---------------------------------------------------------- league view */
 
 const SCORING_LABELS = {
@@ -1555,7 +1866,7 @@ function renderLeague() {
 
 /* ---------------------------------------------------------------- wiring */
 
-const VIEWS = ['league', 'board', 'available', 'keepers', 'sim'];
+const VIEWS = ['league', 'board', 'available', 'keepers', 'sim', 'teams'];
 let activeView = 'board';
 
 function showView(name) {
@@ -1575,6 +1886,7 @@ function renderActive() {
   else if (activeView === 'available') renderAvailable();
   else if (activeView === 'keepers') renderKeepers();
   else if (activeView === 'sim') renderSim();
+  else if (activeView === 'teams') renderTeams();
 }
 
 /** Keeper math depends on rosters, history and overrides — redo it, then repaint. */
@@ -1727,6 +2039,7 @@ async function boot(leagueId, opts) {
 
 function init() {
   S.overrides = lsGet(LS.overrides, {}) || {};
+  S.targets = new Set(lsGet(LS.targets, []) || []);
   keeperSort = lsGet(LS.keeperSort, 'rounds') || 'rounds';
   S.myRosterId = lsGet(LS.team, null);
   const savedView = (() => { try { return localStorage.getItem('cofp.view'); } catch (e) { return null; } })();

@@ -331,3 +331,34 @@ dl.kv dd { margin: 0; font-family: var(--mono); }
   .grid-cards { grid-template-columns: 1fr; }
   button.btn { padding: 8px 13px; }
 }
+
+/* ---------- draft assistant ---------- */
+
+.assistant .assist-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.assistant .assist-row + .assist-row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.assist-block h4 {
+  margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); font-weight: 600;
+}
+.assist-block .big { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.slot.need { border-color: var(--warn); color: var(--warn); }
+
+.cliffs { display: flex; gap: 8px; flex-wrap: wrap; }
+.cliff {
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 4px 9px; border-radius: var(--radius);
+  background: var(--panel-2); border: 1px solid var(--line); font-size: 12px;
+}
+.cliff .n { font-weight: 700; font-size: 14px; }
+.cliff.warnish { border-color: var(--warn); }
+.cliff.urgent { border-color: var(--bad); background: rgba(248,81,73,.10); }
+.cliff.urgent .n { color: var(--bad); }
+
+button.star {
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+  color: var(--dim); font-size: 15px; line-height: 1;
+}
+button.star:hover { color: var(--warn); }
+button.star.on { color: var(--warn); }
+
+.team-card.is-me { border-color: var(--accent); }
