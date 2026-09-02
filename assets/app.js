@@ -1149,8 +1149,8 @@ function availableRows() {
 }
 
 const AVAIL_COLS = [
-  { key: 'vorRank', label: '#', dir: 1, right: true },
-  { key: 'name', label: 'Player', dir: 1 },
+  { key: 'vorRank', label: '#', dir: 1, right: true, cls: 'c-rank' },
+  { key: 'name', label: 'Player', dir: 1, cls: 'c-player' },
   { key: 'adpPick', label: 'ADP', dir: 1, right: true },
   { key: 'points', label: 'Proj', dir: -1, right: true },
   { key: 'vor', label: 'VOR', dir: -1, right: true },
@@ -1287,11 +1287,11 @@ function renderAvailable() {
       ? (S.keeperMode === 'actual' ? ' (keepers removed)' : ' (predicted keepers removed)')
       : '');
 
-  const head = el('tr', {}, [el('th', { text: '' })]);
+  const head = el('tr', {}, [el('th', { class: 'c-star', text: '' })]);
   for (const col of AVAIL_COLS) {
     const active = availState.sort === col.key;
     head.appendChild(el('th', {
-      class: 'sortable ' + (col.right ? 'right' : ''),
+      class: 'sortable ' + (col.right ? 'right ' : '') + (col.cls || ''),
       text: col.label + (active ? (availState.dir === 1 ? ' ▲' : ' ▼') : ''),
       onclick: () => {
         if (availState.sort === col.key) availState.dir = -availState.dir;
@@ -1318,13 +1318,13 @@ function renderAvailable() {
     const tr = el('tr', { onclick: () => showPlayer(p) });
     tr.style.cursor = 'pointer';
     const starred = targetKeys().has(p.key);
-    tr.appendChild(el('td', {}, [el('button', {
+    tr.appendChild(el('td', { class: 'c-star' }, [el('button', {
       class: 'star' + (starred ? ' on' : ''), title: starred ? 'remove target' : 'add target',
       text: starred ? '★' : '☆',
       onclick: (e) => { e.stopPropagation(); toggleTarget(p.key); renderAvailable(); },
     })]));
-    tr.appendChild(el('td', { class: 'num right dim', text: p.vorRank }));
-    tr.appendChild(el('td', {}, [el('div', { class: 'pl' }, [
+    tr.appendChild(el('td', { class: 'num right dim c-rank', text: p.vorRank }));
+    tr.appendChild(el('td', { class: 'c-player' }, [el('div', { class: 'pl' }, [
       el('span', { class: 'n', text: p.name }),
       el('span', { class: 's' }, [
         posChip(p.pos),
