@@ -28,7 +28,12 @@ TIER_UPDATES = [
     ("RB", "tiers_rb.csv"),
     ("WR", "tiers_wr.csv"),
     ("TE", "tiers_te.csv"),
+    # Team defences exist only in the app - there is no CSV export for them.
+    ("DEF", "tiers_def.csv"),
 ]
+
+# Output order, including positions that have no export behind them.
+POSITIONS = ["QB", "RB", "WR", "TE", "DEF"]
 
 SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
@@ -150,21 +155,30 @@ def apply_tier_updates(players):
                 p["adp"] = clean(row.get("ADP")) or None
                 p["adpPick"] = adp_to_pick(row.get("ADP"))
                 rebuilt.append(p)
+        # A screenshot can stop short of the full list. Anyone the export has
+        # but the app screens did not reach keeps his place behind them rather
+        # than vanishing from the pool, in a tier past the app's last.
+        leftovers = sorted(base.values(), key=lambda r: r.get("posRank") or 999)
+        if leftovers:
+            beyond = max([r["tier"] for r in rebuilt if r["tier"]] or [0]) + 1
+            for i, r in enumerate(leftovers):
+                r["posRank"] = len(rebuilt) + i + 1
+                r["tier"] = beyond
+                r["beyondList"] = True
+            rebuilt.extend(leftovers)
         rebuilt.sort(key=lambda r: r["posRank"] or 999)
         interpolate_points(rebuilt)
         for name, was, now, gap in reconcile_projections(rebuilt):
             print("  %s: re-estimated %s - projection implied %s%d, app says %s%d (%d places)"
                   % (pos, name, pos, was, pos, now, gap))
         by_pos[pos] = rebuilt
-        print("  %s: %d ranked from app (%d new%s; %d dropped%s)" % (
-            pos, len(rebuilt), len(added),
-            (": " + ", ".join(added[:4]) + ("…" if len(added) > 4 else "")) if added else "",
-            len(base),
-            (": " + ", ".join(sorted(p["name"] for p in base.values())[:4])
-             + ("…" if len(base) > 4 else "")) if base else ""))
+        print("  %s: %d from app, %d new%s%s" % (
+            pos, len(rebuilt) - len(leftovers), len(added),
+            (" (" + ", ".join(added[:4]) + ("…" if len(added) > 4 else "") + ")") if added else "",
+            ("; %d kept from the export beyond the app's list" % len(leftovers)) if leftovers else ""))
 
     out = []
-    for pos, _ in SOURCES:
+    for pos in POSITIONS:
         out.extend(by_pos.get(pos, []))
     return out
 
@@ -215,7 +229,7 @@ def main():
 
     payload = {
         "source": "Ultimate Draft Kit position rankings (Fantasy Footballers)",
-        "counts": {pos: sum(1 for p in players if p["pos"] == pos) for pos, _ in SOURCES},
+        "counts": {pos: sum(1 for p in players if p["pos"] == pos) for pos in POSITIONS},
         "players": ranked,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

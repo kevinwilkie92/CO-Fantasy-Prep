@@ -1,16 +1,18 @@
 :root {
-  --bg: #0d1117;
-  --panel: #151b23;
-  --panel-2: #1c232d;
-  --line: #2a323d;
-  --line-soft: #222933;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --dim: #6e7681;
-  --accent: #58a6ff;
-  --good: #3fb950;
-  --warn: #d29922;
-  --bad: #f85149;
+  --bg: #000000;
+  --panel: #101010;
+  --panel-2: #1c1c1c;
+  --line: #2c2c2c;
+  --line-soft: #1f1f1f;
+  --text: #ffffff;
+  --muted: #a4a4a4;
+  --dim: #6e6e6e;
+  --accent: #42ab4c;
+  --accent-soft: rgba(66, 171, 76, .14);
+  --row-alt: #171717;
+  --good: #42ab4c;
+  --warn: #d8a129;
+  --bad: #e5484d;
   --qb: #d97757;
   --rb: #3fb950;
   --wr: #58a6ff;
@@ -49,6 +51,7 @@ header.topbar {
 }
 
 .brand { font-weight: 700; letter-spacing: -.01em; white-space: nowrap; flex: 1; }
+.brand { text-transform: uppercase; letter-spacing: .06em; font-size: 13px; }
 .brand span { color: var(--accent); }
 
 nav.tabs {
@@ -72,16 +75,20 @@ nav.tabs button { white-space: nowrap; flex: none; }
 nav.tabs button {
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: 6px 12px;
+  border-radius: 999px;
+  padding: 6px 15px;
   color: var(--muted);
   cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
 }
-nav.tabs button:hover { color: var(--text); background: var(--panel-2); }
+nav.tabs button:hover { color: var(--text); }
 nav.tabs button[aria-selected="true"] {
   color: var(--text);
-  background: var(--panel-2);
-  border-color: var(--line);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); flex: none; }
@@ -120,8 +127,8 @@ button.btn {
 }
 button.btn:hover:not(:disabled) { border-color: var(--dim); background: #232b36; }
 button.btn:disabled { opacity: .45; cursor: not-allowed; }
-button.btn.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-button.btn.primary:hover:not(:disabled) { background: #388bfd; border-color: #388bfd; }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: #041406; font-weight: 700; }
+button.btn.primary:hover:not(:disabled) { background: #4cc257; border-color: #4cc257; }
 button.btn.small { padding: 3px 9px; font-size: 12px; }
 
 input[type=text], input[type=search], input[type=number], select, textarea {
@@ -195,11 +202,52 @@ thead th {
 thead th.sortable { cursor: pointer; user-select: none; }
 thead th.sortable:hover { color: var(--text); }
 tbody td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
-tbody tr:hover { background: var(--panel); }
+tbody tr:nth-child(even of :not(.tier-row)) { background: var(--row-alt); }
+tbody tr:hover { background: var(--panel-2); }
 tbody tr.taken { opacity: .38; }
 tbody tr.tier-break td { border-top: 2px solid var(--line); }
+
+/* Tier divider, shaped like the app's notched green banner. */
+tr.tier-row td { padding: 0; border-bottom: none; background: var(--bg); }
+.tier-banner {
+  position: relative;
+  height: 19px;
+  border-top: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.tier-banner span {
+  background: var(--accent);
+  color: #06170a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  padding: 1px 26px 2px 30px;
+  margin-right: 14%;
+  clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+}
+
+/* Two-tone pill bars for risk and upside, as the app draws them. */
+.bar {
+  display: inline-block;
+  width: 58px;
+  height: 11px;
+  border-radius: 999px;
+  background: #3a3a3a;
+  overflow: hidden;
+  vertical-align: -1px;
+}
+.bar i { display: block; height: 100%; border-radius: 999px; }
+.bar.risk i { background: var(--bad); }
+.bar.up i { background: var(--accent); }
+
+/* Name over a quiet team/bye subline, the app's two-line player cell. */
+.pl { line-height: 1.25; }
+.pl .n { font-weight: 700; font-size: 13px; display: block; }
+.pl .s { font-size: 11px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 td.right, th.right { text-align: right; }
-td.name { font-weight: 600; }
+td.name { font-weight: 700; }
 
 /* ---------- draft board ---------- */
 

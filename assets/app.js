@@ -365,7 +365,11 @@ function computeValue() {
   }
   const ranked = S.rankings.filter((p) => p.vor !== null).sort((a, b) => b.vor - a.vor);
   ranked.forEach((p, i) => { p.vorRank = i + 1; });
-  S.rankings.filter((p) => p.vor === null).forEach((p) => { p.vorRank = ranked.length + 1; });
+  // Team defences carry no projection. Rank them behind everyone else but in
+  // their own order, so they still sort and filter sensibly.
+  S.rankings.filter((p) => p.vor === null)
+    .sort((a, b) => POS_ORDER.indexOf(a.pos) - POS_ORDER.indexOf(b.pos) || (a.posRank || 999) - (b.posRank || 999))
+    .forEach((p, i) => { p.vorRank = ranked.length + 1 + i; });
   S.replacement = replacement;
   S.starterBase = base;
   // Value the board is expected to offer at each successive pick: if picks went
@@ -1145,19 +1149,23 @@ function availableRows() {
 }
 
 const AVAIL_COLS = [
-  { key: 'vorRank', label: '#', dir: 1, cls: 'num right' },
-  { key: 'name', label: 'Player', dir: 1, cls: 'name' },
-  { key: 'pos', label: 'Pos', dir: 1 },
-  { key: 'team', label: 'Tm', dir: 1 },
-  { key: 'bye', label: 'Bye', dir: 1, cls: 'num right' },
-  { key: 'tier', label: 'Tier', dir: 1, cls: 'right' },
-  { key: 'posRank', label: 'PosRk', dir: 1, cls: 'num right' },
-  { key: 'points', label: 'Proj', dir: -1, cls: 'num right' },
-  { key: 'vor', label: 'VOR', dir: -1, cls: 'num right' },
-  { key: 'adpPick', label: 'ADP', dir: 1, cls: 'num right' },
-  { key: 'risk', label: 'Risk', dir: 1, cls: 'num right' },
-  { key: 'upside', label: 'Upside', dir: -1, cls: 'num right' },
+  { key: 'vorRank', label: '#', dir: 1, right: true },
+  { key: 'name', label: 'Player', dir: 1 },
+  { key: 'adpPick', label: 'ADP', dir: 1, right: true },
+  { key: 'points', label: 'Proj', dir: -1, right: true },
+  { key: 'vor', label: 'VOR', dir: -1, right: true },
+  { key: 'risk', label: 'Risk', dir: 1, right: true },
+  { key: 'upside', label: 'Upside', dir: -1, right: true },
 ];
+
+/** 0-10 rating drawn as the app's two-tone pill. */
+function ratingBar(value, kind) {
+  if (value === null || value === undefined) return el('span', { class: 'dim', text: '—' });
+  const pct = Math.max(0, Math.min(100, (value / 10) * 100));
+  return el('span', {
+    class: 'bar ' + kind, title: kind + ' ' + fmt(value),
+  }, [el('i', { style: 'width:' + pct.toFixed(0) + '%' })]);
+}
 
 function oddsClass(o) {
   return o >= 0.7 ? 'good' : o >= 0.4 ? 'warn' : 'bad';
@@ -1283,7 +1291,7 @@ function renderAvailable() {
   for (const col of AVAIL_COLS) {
     const active = availState.sort === col.key;
     head.appendChild(el('th', {
-      class: 'sortable ' + (col.cls && col.cls.includes('right') ? 'right' : ''),
+      class: 'sortable ' + (col.right ? 'right' : ''),
       text: col.label + (active ? (availState.dir === 1 ? ' ▲' : ' ▼') : ''),
       onclick: () => {
         if (availState.sort === col.key) availState.dir = -availState.dir;
@@ -1294,12 +1302,20 @@ function renderAvailable() {
   }
 
   const body = el('tbody');
+  // Tier banners only mean something within one position, so they appear when a
+  // position is picked and the list is still in rank order.
+  const banners = availState.sort === 'vorRank' && availState.dir === 1 && availState.pos !== 'ALL';
   let lastTier = null;
   for (const p of rows.slice(0, 400)) {
-    const tierBreak = availState.sort === 'vorRank' && availState.pos !== 'ALL'
-      && lastTier !== null && p.tier !== lastTier;
+    if (banners && p.tier && p.tier !== lastTier) {
+      body.appendChild(el('tr', { class: 'tier-row' }, [
+        el('td', { colspan: AVAIL_COLS.length + 1 }, [
+          el('div', { class: 'tier-banner' }, [el('span', { text: 'TIER ' + p.tier })]),
+        ]),
+      ]));
+    }
     lastTier = p.tier;
-    const tr = el('tr', { class: tierBreak ? 'tier-break' : '', onclick: () => showPlayer(p) });
+    const tr = el('tr', { onclick: () => showPlayer(p) });
     tr.style.cursor = 'pointer';
     const starred = targetKeys().has(p.key);
     tr.appendChild(el('td', {}, [el('button', {
@@ -1308,21 +1324,24 @@ function renderAvailable() {
       onclick: (e) => { e.stopPropagation(); toggleTarget(p.key); renderAvailable(); },
     })]));
     tr.appendChild(el('td', { class: 'num right dim', text: p.vorRank }));
-    tr.appendChild(el('td', { class: 'name', text: p.name }));
-    tr.appendChild(el('td', {}, [posChip(p.pos)]));
-    tr.appendChild(el('td', { class: 'muted', text: p.team || '—' }));
-    tr.appendChild(el('td', { class: 'num right muted', text: p.bye || '—' }));
-    tr.appendChild(el('td', { class: 'right' }, [el('span', { class: 'tier-chip', text: 'T' + (p.tier || '?') })]));
-    tr.appendChild(el('td', { class: 'num right muted', text: p.pos + (p.posRank || '') }));
+    tr.appendChild(el('td', {}, [el('div', { class: 'pl' }, [
+      el('span', { class: 'n', text: p.name }),
+      el('span', { class: 's' }, [
+        posChip(p.pos),
+        (p.team || 'FA') + (p.bye ? ' (' + p.bye + ')' : ''),
+        el('span', { class: 'dim', text: p.pos + (p.posRank || '') }),
+        p.tier ? el('span', { class: 'dim', text: 'T' + p.tier }) : null,
+      ]),
+    ])]));
+    tr.appendChild(el('td', { class: 'num right muted', text: p.adp || '—' }));
     tr.appendChild(el('td', {
       class: 'num right' + (p.estimated ? ' muted' : ''),
       title: p.estimated ? 'estimated from his rank — no projection in the export' : '',
       text: fmt(p.points) + (p.estimated ? '*' : ''),
     }));
     tr.appendChild(el('td', { class: 'num right ' + (p.vor > 0 ? 'good' : 'dim'), text: fmt(p.vor) }));
-    tr.appendChild(el('td', { class: 'num right muted', text: p.adp || '—' }));
-    tr.appendChild(el('td', { class: 'num right muted', text: fmt(p.risk) }));
-    tr.appendChild(el('td', { class: 'num right muted', text: fmt(p.upside) }));
+    tr.appendChild(el('td', { class: 'right' }, [ratingBar(p.risk, 'risk')]));
+    tr.appendChild(el('td', { class: 'right' }, [ratingBar(p.upside, 'up')]));
     body.appendChild(tr);
   }
   host.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [head]), body])]));
@@ -1343,6 +1362,9 @@ function showPlayer(p) {
       el('p', { class: 'sub' }, [
         posChip(p.pos), ' · ' + (p.team || 'FA') + ' · Bye ' + (p.bye || '—')
         + ' · ' + p.pos + (p.posRank || '') + ' · Tier ' + (p.tier || '?'),
+        p.beyondList
+          ? el('span', { class: 'warn', text: ' · past the end of the app\'s ranked list' })
+          : null,
       ]),
       el('dl', { class: 'kv' }, [
         el('dt', { text: 'Projected points' }),

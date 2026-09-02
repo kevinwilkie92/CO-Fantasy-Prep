@@ -197,7 +197,8 @@ position.
 ## Rankings
 
 Projections, tiers, ADP, risk/upside and writeups come from the Ultimate Draft
-Kit position rankings (Fantasy Footballers) — 312 players across QB/RB/WR/TE.
+Kit position rankings (Fantasy Footballers) — 346 players across QB/RB/WR/TE
+plus 32 team defences.
 
 Source CSVs live in `data/raw/`. To refresh them, drop in new exports with the
 same columns and rebuild:
@@ -211,8 +212,16 @@ python3 scripts/build_rankings.py
 The UDK app re-ranks through the summer while the CSV export does not, so
 `data/raw/tiers_<pos>.csv` overlays fresher rank, tier, ADP, team and bye on top
 of an export. Columns are `Rank,Name,Team,Bye,ADP,Tier`; a missing file just
-means that position keeps its export. QB, RB and WR are current from the app; TE
-still comes from the export.
+means that position keeps its export. QB, RB, WR and DEF come from the app; TE
+is current through **TE37**, which is as far as the app screenshot reached — the
+remaining 17 from the export sit behind them in a tier past the app's last, and
+are flagged as such in the player pop-up. Send a screenshot of the rest and they
+slot in.
+
+Team defences exist only in `tiers_def.csv` — there is no export behind them, so
+they carry a rank and a bye but no projection, ADP or tier. They rank behind
+every projected player, which is where a streamed defence belongs; filter the
+pool to DEF to find one.
 
 Projections and the writeups always come from the export, because the app screens
 do not carry them. Two things follow:
@@ -246,6 +255,15 @@ It writes `data/league.json`, and the app falls back to that file automatically
 when the live call fails (and to its last cached load after that). Live pick
 polling is off in that mode. `data/league.json` is gitignored — it is a
 snapshot, not source.
+
+## Look
+
+The palette, the pill tabs, the notched green tier banners and the red/green
+risk and upside bars are lifted from the UDK app so the two read the same way,
+down to its `#42ab4c` green on black. The pool rows follow the app's shape too —
+rank in a gutter, name over a quiet `POS TEAM (BYE)` line — with the projection
+and value columns this tool adds on the right. Tier banners appear once you
+filter to a single position, since a tier only means something within one.
 
 ## Layout
 
