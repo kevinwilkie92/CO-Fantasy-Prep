@@ -645,20 +645,49 @@ function pickCapacity() {
  * another round. If the team has no pick left there, he simply cannot be kept,
  * and the manager has to give one of them up.
  */
+/** What is already on the draft board: player -> round, and picks spent per team. */
+function placedPicks() {
+  const byPlayer = new Map();
+  const spent = new Map();
+  for (const p of S.picks) {
+    if (!p.player_id) continue;
+    const round = Number(p.round);
+    byPlayer.set(String(p.player_id), round);
+    const rid = Number(p.roster_id);
+    if (!spent.has(rid)) spent.set(rid, new Map());
+    const m = spent.get(rid);
+    m.set(round, (m.get(round) || 0) + 1);
+  }
+  return { byPlayer, spent };
+}
+
 function assignKeeperRounds() {
-  const assignments = new Map(); // playerId -> {round}
+  const assignments = new Map(); // playerId -> {round, onBoard}
   const blocked = [];
+  const mismatched = [];
   const capacity = pickCapacity();
+  const { byPlayer: placed, spent } = placedPicks();
 
   for (const r of S.rosters) {
     // Count picks per round: a team holding two picks in a round can pay for
     // two keepers out of it, and a team that traded its pick away pays none.
     const owned = capacity.get(r.roster_id) || new Map();
-    const used = new Map();
+    // Picks already on the board are spent and cannot pay for anything else.
+    const used = new Map(spent.get(r.roster_id) || []);
     const list = predictedForRoster(r.roster_id)
       .slice()
       .sort((a, b) => (a.cost - b.cost) || ((b.gain || 0) - (a.gain || 0)));
     for (const k of list) {
+      // Your league has already put him on the board. That placement is the
+      // truth — this tool does not get to place him a second time.
+      const at = placed.get(k.playerId);
+      if (at !== undefined) {
+        assignments.set(k.playerId, { round: at, onBoard: true });
+        if (at !== k.cost) {
+          mismatched.push({ team: teamName(r.roster_id), name: k.name, league: at, derived: k.cost });
+        }
+        continue;
+      }
       const round = k.cost;
       const held = owned.get(round) || 0;
       if (held - (used.get(round) || 0) <= 0) {
@@ -674,7 +703,7 @@ function assignKeeperRounds() {
       assignments.set(k.playerId, { round });
     }
   }
-  return { assignments, blocked };
+  return { assignments, blocked, mismatched };
 }
 
 /* ------------------------------------------------------------- board model */
@@ -711,13 +740,16 @@ function buildBoard(opts) {
   const teams = teamCount();
   const rounds = roundCount();
   const actual = actualPickMap();
-  const { assignments, blocked } = opts.useKeepers ? assignKeeperRounds() : { assignments: new Map(), blocked: [] };
+  const { assignments, blocked, mismatched } = opts.useKeepers
+    ? assignKeeperRounds()
+    : { assignments: new Map(), blocked: [], mismatched: [] };
 
   // "ownerRosterId:round" -> keepers waiting to be placed on a pick that team
   // actually holds. A team that traded its 5th away cannot pay a 5th for a
   // keeper, so these are consumed against real owned picks rather than slots.
   const keeperQueue = new Map();
   for (const [pid, info] of assignments.entries()) {
+    if (info.onBoard) continue; // already drawn from the real pick
     const k = S.keepers.get(pid);
     if (!k) continue;
     const key = k.rosterId + ':' + info.round;
@@ -793,7 +825,7 @@ function buildBoard(opts) {
       orphans.push({ team: teamName(k.rosterId), name: k.name, round: Number(key.split(':')[1]) });
     }
   }
-  return { cells, blocked, assignments, orphans };
+  return { cells, blocked, mismatched, assignments, orphans };
 }
 
 function onTheClock() {
@@ -845,11 +877,21 @@ function renderBoard() {
   }
   const useKeepers = $('#optKeepers').checked;
   const project = $('#optProject').checked;
-  const { cells, blocked, orphans } = buildBoard({ useKeepers, project });
+  const { cells, blocked, mismatched, orphans } = buildBoard({ useKeepers, project });
   const s2r = slotToRoster();
   const clock = onTheClock();
 
   if (useKeepers) host.appendChild(keeperSourceNotice());
+
+  if (mismatched && mismatched.length) {
+    host.appendChild(el('div', { class: 'notice' }, [
+      el('strong', { text: 'Keeper cost differs from what your league charged: ' }),
+      mismatched.map((m) => m.name + ' (' + m.team + ') — league ' + ordinal(m.league)
+        + ', this tool worked out ' + ordinal(m.derived)).join('; ')
+        + '. The board shows your league\'s round, which is the real one. The Keepers tab '
+        + 'cost and value columns are using the derived round, so correct them in the override editor.',
+    ]));
+  }
 
   if (blocked.length) {
     host.appendChild(el('div', { class: 'notice err' }, [
