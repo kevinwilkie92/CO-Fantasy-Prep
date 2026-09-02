@@ -321,7 +321,7 @@ function pickNumber(round, slot) {
 /* ------------------------------------------------------- rankings + value */
 
 async function loadRankings() {
-  const res = await fetch('data/rankings.json');
+  const res = await fetch('data/rankings.json', { cache: 'no-cache' });
   if (!res.ok) throw new Error('Could not load data/rankings.json (' + res.status + ')');
   const payload = await res.json();
   S.rankings = payload.players || [];

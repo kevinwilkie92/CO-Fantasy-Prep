@@ -29,6 +29,11 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      # Browsers hold on to assets/*.css and *.js hard. Stamping the commit SHA
+      # into their URLs means a push is actually visible without a manual
+      # cache clear on every device.
+      - name: Cache-bust asset URLs
+        run: sed -i "s/BUILDVER/${GITHUB_SHA::8}/g" index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
