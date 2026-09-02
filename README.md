@@ -206,6 +206,30 @@ same columns and rebuild:
 python3 scripts/build_rankings.py
 ```
 
+### Updating tiers from the app
+
+The UDK app re-ranks through the summer while the CSV export does not, so
+`data/raw/tiers_<pos>.csv` overlays fresher rank, tier, ADP, team and bye on top
+of an export. Columns are `Rank,Name,Team,Bye,ADP,Tier`; a missing file just
+means that position keeps its export. QB and RB are current from the app; WR and
+TE still come from the export.
+
+Projections and the writeups always come from the export, because the app screens
+do not carry them. Two things follow:
+
+- A player only in the app has his projection **estimated** from the ranked
+  players either side of him.
+- Where a projection flatly contradicts the app's rank — the app moved him 25+
+  places — the projection is stale and gets re-estimated the same way. Josh
+  Jacobs is the live example: the export projects him RB13, the app has him
+  RB84, so his 234.6 points would otherwise have made him the best value on the
+  board.
+
+Estimated projections carry an asterisk in the Available table and are labelled
+in the player pop-up. The rebuild prints every one it makes, along with any name
+in the update that did not match the export — a mismatch there usually means a
+typo in the update file.
+
 ## When Sleeper is unreachable
 
 Some networks block `api.sleeper.app`. Run this anywhere that can reach it:

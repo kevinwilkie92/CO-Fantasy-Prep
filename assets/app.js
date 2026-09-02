@@ -1314,7 +1314,11 @@ function renderAvailable() {
     tr.appendChild(el('td', { class: 'num right muted', text: p.bye || '—' }));
     tr.appendChild(el('td', { class: 'right' }, [el('span', { class: 'tier-chip', text: 'T' + (p.tier || '?') })]));
     tr.appendChild(el('td', { class: 'num right muted', text: p.pos + (p.posRank || '') }));
-    tr.appendChild(el('td', { class: 'num right', text: fmt(p.points) }));
+    tr.appendChild(el('td', {
+      class: 'num right' + (p.estimated ? ' muted' : ''),
+      title: p.estimated ? 'estimated from his rank — no projection in the export' : '',
+      text: fmt(p.points) + (p.estimated ? '*' : ''),
+    }));
     tr.appendChild(el('td', { class: 'num right ' + (p.vor > 0 ? 'good' : 'dim'), text: fmt(p.vor) }));
     tr.appendChild(el('td', { class: 'num right muted', text: p.adp || '—' }));
     tr.appendChild(el('td', { class: 'num right muted', text: fmt(p.risk) }));
@@ -1341,7 +1345,8 @@ function showPlayer(p) {
         + ' · ' + p.pos + (p.posRank || '') + ' · Tier ' + (p.tier || '?'),
       ]),
       el('dl', { class: 'kv' }, [
-        el('dt', { text: 'Projected points' }), el('dd', { text: fmt(p.points) }),
+        el('dt', { text: 'Projected points' }),
+        el('dd', { text: fmt(p.points) + (p.estimated ? '  (estimated from his rank)' : '') }),
         el('dt', { text: 'Value over replacement' }), el('dd', { text: fmt(p.vor) + '  (overall #' + p.vorRank + ')' }),
         el('dt', { text: 'ADP' }), el('dd', { text: p.adp ? p.adp + '  (pick ' + p.adpPick + ')' : 'undrafted' }),
         el('dt', { text: 'Risk / Upside' }), el('dd', { text: fmt(p.risk) + ' / ' + fmt(p.upside) }),
