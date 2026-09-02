@@ -51,8 +51,7 @@ picks, and every prior-season draft it can reach through Sleeper's
 **Draft Board** — the 12-wide snake grid, rounds down the side. Press *Start
 live updates* on draft day and it polls every 10 seconds; the pick on the clock
 is outlined, and picks you own are tinted. Two toggles: overlay the keepers you
-expect teams to declare, and fill every open pick with an ADP guess at who is
-still there.
+expect teams to declare, and project every pick still open.
 
 **Available** — the tab to live on during the draft. Above the pool sits a strip
 answering what you need to know between picks:
@@ -114,6 +113,31 @@ cost round, the board says so and points at the override editor, because at that
 point the cost derived from the prior draft is the thing that is probably wrong.
 
 ## Keeper rules encoded
+
+## How open picks are projected
+
+The projection walks every remaining pick in true snake order and asks what that
+particular team would take, not who is best outright. For each pick:
+
+- **Value sets the shortlist.** Players are ordered by points over replacement.
+- **Roster holes choose from it.** A team reaches up to about 16 board slots to
+  fill an empty starting slot, and about 7 for a flex. A team already stacked at
+  a position stops taking it — positional caps are derived from your starting
+  lineup, so nobody drafts a fourth quarterback.
+- **A thinning tier pulls a pick forward.** When a position's live tier is down
+  to its last couple of players, they gain a bump: the same cliff logic a real
+  room drafts on, and why you will see a run start.
+- **Late needs become forced.** Once a team has only as many picks left as it
+  has holes, every remaining pick must fill one. Defences are held back until a
+  team's last two picks, which is where they actually go.
+
+Keepers count as players already rostered, so a team that kept two running backs
+projects to draft receivers.
+
+Two honest limits. There are **no kicker rankings** in the data, so the
+projection never fills a K slot — the assistant still lists K as a real roster
+need, because it is one. And it assumes every manager drafts rationally for need,
+which your league will cheerfully disprove.
 
 ## Traded picks
 

@@ -736,10 +736,133 @@ function projectionScore(p) {
   return Math.max(p.vorRank || 999, teams * 14);
 }
 
+/** Roughly how many of each position a team will actually carry. */
+function positionCaps() {
+  const slots = starterSlots();
+  const n = (pos) => slots.filter((s) => s === pos).length;
+  const flex = slots.filter((s) => FLEX_SETS[s]).length;
+  return {
+    QB: Math.max(1, n('QB')) + 1,
+    TE: Math.max(1, n('TE')) + 1,
+    RB: n('RB') + flex + 2,
+    WR: n('WR') + flex + 2,
+    K: Math.max(1, n('K')),
+    DEF: Math.max(1, n('DEF')),
+  };
+}
+
+/** Which starting slots a roster of these positions still leaves empty. */
+function holesFromCounts(counts) {
+  const left = Object.assign({}, counts);
+  const holes = [];
+  for (const slot of starterSlots()) {
+    if (FLEX_SETS[slot]) continue;
+    if (left[slot] > 0) left[slot] -= 1;
+    else holes.push(slot);
+  }
+  for (const slot of starterSlots()) {
+    const set = FLEX_SETS[slot];
+    if (!set) continue;
+    const fill = set.find((pos) => left[pos] > 0);
+    if (fill) left[fill] -= 1;
+    else holes.push(slot);
+  }
+  return holes;
+}
+
+function fillsAHole(pos, holes) {
+  return holes.some((h) => h === pos || (FLEX_SETS[h] && FLEX_SETS[h].indexOf(pos) !== -1));
+}
+
+/**
+ * Walk the remaining picks in real snake order and guess each one, on the view
+ * that a manager takes the best player he can still use rather than the best
+ * player outright. Value sets the shortlist, roster holes choose from it, and
+ * a thinning tier pulls a pick forward — the same cliff logic a room drafts on.
+ */
+function projectOpenPicks(cells, taken, assignments) {
+  const caps = positionCaps();
+  const open = [];
+  for (const row of cells) for (const cell of row) if (cell.kind === 'empty') open.push(cell);
+  open.sort((a, b) => a.pickNo - b.pickNo);
+
+  // Seed every roster with what it already holds, keepers included.
+  const state = new Map();
+  for (const r of S.rosters) {
+    const counts = {};
+    for (const p of playersHeldBy(r.roster_id)) {
+      if (p.pos) counts[p.pos] = (counts[p.pos] || 0) + 1;
+    }
+    state.set(r.roster_id, counts);
+  }
+  const picksLeft = new Map();
+  for (const cell of open) picksLeft.set(cell.rosterId, (picksLeft.get(cell.rosterId) || 0) + 1);
+
+  const pool = S.rankings.filter((p) => !taken.has(p.key))
+    .sort((a, b) => (a.vorRank || 9999) - (b.vorRank || 9999));
+  // A slot this tool has no players for - kickers - cannot be projected. Left in
+  // the hole list it would make every late pick "must fill" against an empty
+  // shortlist and leave the pick blank, so it is ignored here. The assistant
+  // still lists K as a real roster need, because it is one.
+  const rankedPositions = new Set(S.rankings.map((p) => p.pos));
+  const fillable = (holes) => holes.filter((h) => FLEX_SETS[h] || rankedPositions.has(h));
+  // How many of each position remain in each tier, for the scarcity nudge.
+  const inTier = new Map();
+  for (const p of pool) {
+    const key = p.pos + ':' + (p.tier || 0);
+    inTier.set(key, (inTier.get(key) || 0) + 1);
+  }
+
+  const STARTER_BONUS = 16;   // board slots a manager will reach to fill a hole
+  const FLEX_BONUS = 7;
+  const LATE_ONLY = { K: true, DEF: true };
+
+  for (const cell of open) {
+    const counts = state.get(cell.rosterId) || {};
+    const holes = fillable(holesFromCounts(counts));
+    const left = picksLeft.get(cell.rosterId) || 1;
+    // Once a team has only as many picks as holes, every pick must fill one.
+    const mustFill = holes.length >= left;
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < pool.length; i += 1) {
+      const p = pool[i];
+      if ((counts[p.pos] || 0) >= (caps[p.pos] || 99)) continue;
+      const fills = fillsAHole(p.pos, holes);
+      if (mustFill && !fills) continue;
+      // Nobody spends an early pick on a kicker or a defence.
+      if (LATE_ONLY[p.pos] && left > 2) continue;
+      let score = -(p.vorRank || 9999);
+      if (holes.indexOf(p.pos) !== -1) score += STARTER_BONUS;
+      else if (fills) score += FLEX_BONUS;
+      if (LATE_ONLY[p.pos]) score += 400;
+      // A tier about to run dry is worth reaching for.
+      const remaining = inTier.get(p.pos + ':' + (p.tier || 0)) || 99;
+      if (p.tier && remaining <= 5) score += (6 - remaining) * 2;
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    if (!best) continue;
+
+    pool.splice(pool.indexOf(best), 1);
+    const key = best.pos + ':' + (best.tier || 0);
+    inTier.set(key, Math.max(0, (inTier.get(key) || 1) - 1));
+    counts[best.pos] = (counts[best.pos] || 0) + 1;
+    state.set(cell.rosterId, counts);
+    picksLeft.set(cell.rosterId, left - 1);
+
+    cell.kind = 'proj';
+    cell.name = best.name;
+    cell.pos = best.pos;
+    cell.nflTeam = best.team;
+    cell.rank = best;
+    cell.fillsNeed = holes.indexOf(best.pos) !== -1;
+  }
+}
+
 /**
  * Full board: real picks where they exist, predicted keepers on top of the
- * rounds they consume, and (optionally) an ADP-driven guess at who is left
- * for every pick still open.
+ * rounds they consume, and (optionally) a projection of every pick still open.
  */
 function buildBoard(opts) {
   const teams = teamCount();
@@ -764,11 +887,6 @@ function buildBoard(opts) {
 
   const taken = draftedKeys();
   for (const [pid] of assignments.entries()) taken.add(normName(playerName(pid)));
-
-  const pool = S.rankings
-    .filter((p) => !taken.has(p.key))
-    .sort((a, b) => projectionScore(a) - projectionScore(b));
-  let poolIdx = 0;
 
   const s2r = slotToRoster();
   const owners = pickOwnerMap();
@@ -807,21 +925,16 @@ function buildBoard(opts) {
             name: k.name, pos: k.pos, nflTeam: k.team,
             cost: k.cost, rank: k.rank,
           });
-        } else if (opts.project) {
-          const next = pool[poolIdx];
-          poolIdx += 1;
-          if (next) {
-            cell = Object.assign({}, base, {
-              kind: 'proj',
-              name: next.name, pos: next.pos, nflTeam: next.team, rank: next,
-            });
-          }
         }
       }
       row.push(cell);
     }
     cells.push(row);
   }
+
+  // Projection runs after the grid exists, so it can walk true snake order
+  // rather than the order the cells happen to be laid out in.
+  if (opts.project) projectOpenPicks(cells, taken, assignments);
 
   // Anything still queued wanted a round its team no longer holds a pick in.
   const orphans = [];
@@ -973,7 +1086,7 @@ function renderBoard() {
       S.keeperMode === 'actual' ? 'keeper' : 'predicted keeper']),
     el('span', {}, [el('i', { style: 'background:rgba(88,166,255,.5)' }), 'your team']),
     el('span', {}, [el('i', { style: 'background:rgba(63,185,80,.5)' }), 'on the clock']),
-    el('span', {}, [el('i', { style: 'background:rgba(210,153,34,.4)' }), 'projected (ADP)']),
+    el('span', {}, [el('i', { style: 'background:rgba(210,153,34,.4)' }), 'projected pick']),
     tradedCount
       ? el('span', {}, [el('i', { style: 'background:rgba(248,81,73,.45)' }), tradedCount + ' traded — arrow names who owns it now'])
       : el('span', { class: 'dim', text: 'no picks traded' }),
@@ -1716,8 +1829,8 @@ function renderSim() {
       el('h2', { text: 'Your board after keepers' }),
       el('p', { class: 'sub', text: lines.length + ' picks you own'
         + (acquired ? ', ' + acquired + ' of them traded for' : '')
-        + '. Rounds you spend on keepers drop out. Everything left is who the ADP pool projects '
-        + 'to still be there at your pick once every predicted keeper is off the table.' }),
+        + '. Rounds you spend on keepers drop out. Everything left is who the projection expects to '
+        + 'still be there, after simulating every pick before yours against what those teams need.' }),
       el('div', { class: 'table-wrap' }, [
         el('table', {}, [
           el('thead', {}, [el('tr', {}, [
