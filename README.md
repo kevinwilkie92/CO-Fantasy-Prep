@@ -151,9 +151,21 @@ a traded pick is credited to the team that used it. From a Sleeper link that is
 automatic — the drafting roster comes with the data.
 
 A pasted list carries no ownership, so picks fall to the slot the snake puts
-them in. Claim your own two ways: put the pick numbers in the **your picks** box
-(`12, 13, 25, 37`), or mark those lines in the paste with a leading `*`. Other
-teams are still grouped by slot, so their trades will not show.
+them in. Claim your own two ways: the **your picks** box, or a leading `*` on
+those lines in the paste. Other teams are still grouped by slot, so their trades
+will not show.
+
+The box reads `round.pick` the way a draft board does — `2.05` is the fifth pick
+of round two — and a bare number is an overall pick. It is prefilled with this
+league's usual set:
+
+```
+2.01, 2.02, 2.05, 4.10, 5.12, 6.10, 7.03, 8.12, 9.12, 10.01, 12.01, 13.08, 13.12
+```
+
+Six of those are slot 12's own; the other seven were traded for, and show a
+*traded pick* note against the slot they came from. Edit the box and the change
+is remembered in the browser; **reset** puts the usual set back.
 
 Claiming picks out of a slot leaves a shell behind in it. Any team holding under
 half a normal share of picks is listed but graded `—` and kept out of the curve,
