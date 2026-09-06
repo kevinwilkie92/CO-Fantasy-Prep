@@ -70,6 +70,9 @@ Below that is the pool itself: everyone not yet drafted, sortable on any column,
 searchable, keepers removed by default. Click a row for the full Ultimate Draft
 Kit writeup, projection, risk/upside and ADP.
 
+**Grade a Mock** — paste a Sleeper mock draft link, or the picks themselves one
+player per line, and every team in it is graded. See *Grading a mock* below.
+
 **Teams** — every roster, what it already holds and which starting slots it
 still needs. Read the teams picking between you and your next pick to work out
 whether your target survives.
@@ -113,6 +116,36 @@ cost round, the board says so and points at the override editor, because at that
 point the cost derived from the prior draft is the thing that is probably wrong.
 
 ## Keeper rules encoded
+
+## Grading a mock
+
+A mock is graded against **your** league — its starting lineup, its scoring,
+these rankings — and on the curve of that particular draft, because a roster is
+only ever good relative to the room it was drafted in.
+
+Two numbers, and they are not the same thing:
+
+| | |
+| --- | --- |
+| **Starters** | Projected points of the best legal lineup those players can field |
+| **Value** | How far the team beat the rest of the draft at turning its slots into points over replacement |
+
+Starters is the outcome; Value is the process. Value subtracts what each pick
+*should* have returned at that slot, so drafting first is not itself a virtue —
+a team can hold the best roster in the mock and still grade poorly for having
+paid over the odds to get it. The grade weights Starters 65% and Value 35%, and
+docks a team for every starting slot it cannot fill.
+
+Raw value is measured against a flawless value draft, which nobody manages, so
+every team scores negative against it. The column is therefore re-centred on the
+draft — a positive number means better than the rest of that room, and hovering
+it shows the raw figure.
+
+Pick your slot and you also get your picks one by one against ADP, your best
+value and your worst reach, and the lineup you ended up with.
+
+Kickers are not scored: there are no kicker rankings in the data, so a K slot is
+neither filled nor docked for.
 
 ## How open picks are projected
 

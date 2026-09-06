@@ -1862,6 +1862,180 @@ function renderSim() {
   }
 }
 
+/* ----------------------------------------------------------- mock grading */
+
+const mockState = { picks: [], teams: 12, rounds: 14, label: '', mySlot: null, error: '',
+  raw: '', id: '' };
+
+/** Best legal starting lineup these players can field, and what it projects. */
+function bestLineup(players) {
+  const slots = starterSlots();
+  const pool = players.slice();
+  const used = [];
+  const take = (test) => {
+    let bestIdx = -1;
+    for (let i = 0; i < pool.length; i += 1) {
+      if (!test(pool[i])) continue;
+      if (bestIdx < 0 || (pool[i].points || 0) > (pool[bestIdx].points || 0)) bestIdx = i;
+    }
+    return bestIdx < 0 ? null : pool.splice(bestIdx, 1)[0];
+  };
+  // Exact slots first, then flex from whatever is left — optimal here, because
+  // a flex accepts a superset of what the exact slots do.
+  const filled = slots.map((slot) => ({ slot, player: null }));
+  for (const entry of filled) {
+    if (FLEX_SETS[entry.slot]) continue;
+    entry.player = take((p) => p.pos === entry.slot);
+  }
+  for (const entry of filled) {
+    const set = FLEX_SETS[entry.slot];
+    if (!set) continue;
+    entry.player = take((p) => set.indexOf(p.pos) !== -1);
+  }
+  const points = filled.reduce((sum, e) => sum + ((e.player && e.player.points) || 0), 0);
+  return { filled, bench: pool, points, holes: filled.filter((e) => !e.player).map((e) => e.slot) };
+}
+
+/**
+ * Grade every team in a mock. Two things are measured and they are not the
+ * same: what the roster projects to score, and whether the picks beat what
+ * those draft slots were worth. A team can draft well and still finish behind
+ * one that simply picked earlier, so both are reported.
+ */
+function gradeMock(picks, teams) {
+  const bySlot = new Map();
+  for (const p of picks) {
+    if (!bySlot.has(p.slot)) bySlot.set(p.slot, []);
+    bySlot.get(p.slot).push(p);
+  }
+  // A K slot cannot be scored — there are no kicker rankings — so it is left
+  // out of the holes a grade is docked for.
+  const ranked = new Set(S.rankings.map((r) => r.pos));
+
+  const rows = [];
+  for (const [slot, list] of bySlot.entries()) {
+    const players = list.map((p) => p.rank).filter(Boolean);
+    const line = bestLineup(players);
+    let surplus = 0;
+    let matched = 0;
+    for (const p of list) {
+      if (!p.rank || p.rank.vor === null || p.rank.vor === undefined) continue;
+      surplus += p.rank.vor - expectedVorAtPick(p.pickNo);
+      matched += 1;
+    }
+    const byes = {};
+    for (const e of line.filled) {
+      const bye = e.player && e.player.bye;
+      if (bye) byes[bye] = (byes[bye] || 0) + 1;
+    }
+    const counts = {};
+    for (const p of players) counts[p.pos] = (counts[p.pos] || 0) + 1;
+    rows.push({
+      slot,
+      picks: list,
+      players,
+      starters: line.filled,
+      bench: line.bench,
+      points: Math.round(line.points * 10) / 10,
+      holes: line.holes.filter((h) => FLEX_SETS[h] || ranked.has(h)),
+      unscorable: line.holes.filter((h) => !FLEX_SETS[h] && !ranked.has(h)),
+      surplus: Math.round(surplus * 10) / 10,
+      matched,
+      counts,
+      byeClashes: Object.entries(byes).filter(([, n]) => n >= 3).map(([week, n]) => ({ week, n })),
+    });
+  }
+
+  // Grade on the curve of this draft: a mock is only ever good relative to the
+  // room it was drafted in.
+  const z = (vals) => {
+    const mean = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (vals.length || 1)) || 1;
+    return (v) => (v - mean) / sd;
+  };
+  const zPoints = z(rows.map((r) => r.points));
+  const zSurplus = z(rows.map((r) => r.surplus));
+  // Value is measured against a flawless value draft, which nobody manages, so
+  // in raw form every team looks negative. Re-centre it on this draft: the
+  // useful question is how a team did against the room it drafted in.
+  const meanSurplus = rows.reduce((a, r) => a + r.surplus, 0) / (rows.length || 1);
+  for (const r of rows) {
+    r.surplusRel = Math.round((r.surplus - meanSurplus) * 10) / 10;
+    r.zPoints = zPoints(r.points);
+    r.zSurplus = zSurplus(r.surplus);
+    // Docked per unfilled starting slot rather than hard-capped: a cap flattens
+    // a whole draft into one grade the moment every team has the same gap.
+    r.score = r.zPoints * 0.65 + r.zSurplus * 0.35 - r.holes.length * 0.45;
+  }
+  rows.sort((a, b) => b.score - a.score);
+  rows.forEach((r, i) => { r.rank = i + 1; r.grade = letterGrade(r.score); });
+  return rows;
+}
+
+function letterGrade(z) {
+  const scale = [[1.45, 'A+'], [1.0, 'A'], [0.65, 'A-'], [0.35, 'B+'], [0.1, 'B'],
+    [-0.12, 'B-'], [-0.35, 'C+'], [-0.62, 'C'], [-0.9, 'C-'], [-1.3, 'D']];
+  for (const [cut, letter] of scale) if (z >= cut) return letter;
+  return 'F';
+}
+
+/** Reach or steal on a single pick, against ADP. */
+function pickDelta(p) {
+  if (!p.rank || !p.rank.adpPick) return null;
+  return p.pickNo - p.rank.adpPick;
+}
+
+/** Pull a mock straight off Sleeper, by draft id or the URL you copied. */
+async function loadMockFromSleeper(input) {
+  const m = String(input).match(/(\d{6,})/);
+  if (!m) throw new Error('That does not look like a Sleeper draft id or URL.');
+  const id = m[1];
+  const draft = await api('/draft/' + id);
+  const picks = await api('/draft/' + id + '/picks');
+  const teams = (draft.settings && draft.settings.teams) || 12;
+  const rounds = (draft.settings && draft.settings.rounds) || 14;
+  const out = [];
+  for (const p of (picks || [])) {
+    if (!p.player_id) continue;
+    const name = playerName(String(p.player_id));
+    out.push({
+      pickNo: Number(p.pick_no),
+      round: Number(p.round),
+      slot: Number(p.draft_slot),
+      name,
+      rank: rankingFor(String(p.player_id)),
+    });
+  }
+  return { picks: out, teams, rounds, label: (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id };
+}
+
+/**
+ * Fall back for mocks drafted somewhere without an API: a list of players in
+ * pick order, one per line. Slots come from the snake.
+ */
+function parsePastedMock(text, teams) {
+  const lines = String(text).split(/\n/).map((l) => l.trim()).filter(Boolean);
+  const out = [];
+  const missing = [];
+  lines.forEach((line, i) => {
+    // Tolerate "1.05 Name", "5. Name", "Name (RB - DET)" and plain names.
+    let name = line.replace(/^\s*\d+[.):]\s*/, '').replace(/^\s*\d+\.\d+\s*/, '');
+    name = name.replace(/\s*[([].*$/, '').replace(/\s+-\s+[A-Z]{2,3}$/, '').trim();
+    const rank = S.byKey.get(normName(name)) || null;
+    if (!rank) missing.push(name);
+    const pickNo = i + 1;
+    const { round, slot } = slotOfPickIn(pickNo, teams);
+    out.push({ pickNo, round, slot, name, rank });
+  });
+  return { picks: out, missing };
+}
+
+function slotOfPickIn(pickNo, teams) {
+  const round = Math.ceil(pickNo / teams);
+  const idx = pickNo - (round - 1) * teams;
+  return { round, slot: round % 2 === 1 ? idx : teams - idx + 1 };
+}
+
 /* ------------------------------------------------------------ teams view */
 
 function renderTeams() {
@@ -1919,6 +2093,151 @@ function renderTeams() {
     ]));
   }
   host.appendChild(cards);
+}
+
+/* ------------------------------------------------------------ grade view */
+
+function renderGrade() {
+  const host = $('#gradeHost');
+  host.replaceChildren();
+
+  // Kept on the state so switching slots or re-grading does not wipe the input.
+  const idInput = el('input', { type: 'text', class: 'grow', spellcheck: 'false',
+    value: mockState.id, placeholder: 'Sleeper mock draft link or id',
+    oninput: (e) => { mockState.id = e.target.value; } });
+  const pasteBox = el('textarea', { rows: '4',
+    placeholder: '…or paste the picks, one player per line in pick order',
+    oninput: (e) => { mockState.raw = e.target.value; } });
+  pasteBox.value = mockState.raw;
+  const slotSel = el('select', {}, [el('option', { value: '', text: 'which slot was yours?' })]);
+  for (let i = 1; i <= mockState.teams; i += 1) {
+    slotSel.appendChild(el('option', { value: i, text: 'slot ' + i, selected: mockState.mySlot === i }));
+  }
+  slotSel.addEventListener('change', () => {
+    mockState.mySlot = slotSel.value ? Number(slotSel.value) : null;
+    renderGrade();
+  });
+
+  const run = async (fn) => {
+    mockState.error = '';
+    try { await fn(); } catch (e) { mockState.error = e.message; }
+    renderGrade();
+  };
+
+  host.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Grade a mock draft' }),
+    el('p', { class: 'sub', text: 'Graded against your league — its starting lineup, its scoring, these rankings. '
+      + 'Every team in the mock is scored, on the curve of that draft.' }),
+    el('div', { class: 'row' }, [
+      idInput,
+      el('button', { class: 'btn primary', text: 'Grade from Sleeper', onclick: () => run(async () => {
+        const r = await loadMockFromSleeper(idInput.value.trim());
+        Object.assign(mockState, r, { missing: [] });
+      }) }),
+    ]),
+    el('div', { style: 'margin-top:10px' }, [pasteBox]),
+    el('div', { class: 'row', style: 'margin-top:8px' }, [
+      el('label', { class: 'sub', style: 'margin:0', text: 'teams' }),
+      el('input', { type: 'number', min: '2', max: '20', value: String(mockState.teams), style: 'width:70px',
+        onchange: (e) => { mockState.teams = Number(e.target.value) || 12; } }),
+      el('button', { class: 'btn', text: 'Grade pasted picks', onclick: () => run(async () => {
+        const r = parsePastedMock(pasteBox.value, mockState.teams);
+        if (!r.picks.length) throw new Error('No picks found in that paste.');
+        Object.assign(mockState, { picks: r.picks, missing: r.missing, label: 'pasted · ' + r.picks.length + ' picks' });
+      }) }),
+      el('span', { class: 'spacer' }),
+      slotSel,
+    ]),
+    mockState.error ? el('p', { class: 'sub bad', style: 'margin-top:8px', text: mockState.error }) : null,
+    (mockState.missing && mockState.missing.length)
+      ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: mockState.missing.length
+        + ' name(s) did not match a ranked player and score as nothing: ' + mockState.missing.slice(0, 6).join(', ')
+        + (mockState.missing.length > 6 ? '…' : '') })
+      : null,
+  ]));
+
+  if (!mockState.picks.length) return;
+
+  const rows = gradeMock(mockState.picks, mockState.teams);
+  const body = el('tbody');
+  for (const r of rows) {
+    const mine = mockState.mySlot === r.slot;
+    const tr = el('tr', { class: mine ? 'sel' : '' });
+    tr.appendChild(el('td', {}, [el('span', { class: 'grade g' + r.grade[0], text: r.grade })]));
+    tr.appendChild(el('td', { class: 'num right dim', text: r.rank }));
+    tr.appendChild(el('td', { class: 'name', text: 'Slot ' + r.slot + (mine ? '  (you)' : '') }));
+    tr.appendChild(el('td', { class: 'num right', text: fmt(r.points, 0) }));
+    tr.appendChild(el('td', { class: 'num right ' + (r.surplusRel > 0 ? 'good' : 'bad'),
+      title: 'raw surplus over a flawless value draft: ' + fmt(r.surplus, 0),
+      text: (r.surplusRel > 0 ? '+' : '') + fmt(r.surplusRel, 0) }));
+    tr.appendChild(el('td', { class: 'muted', text: ['QB', 'RB', 'WR', 'TE', 'DEF']
+      .map((p) => (r.counts[p] || 0) + p).join(' ') }));
+    tr.appendChild(el('td', { class: 'sub', style: 'margin:0' }, [
+      r.holes.length ? el('span', { class: 'bad', text: 'no ' + r.holes.join('/') + ' ' }) : null,
+      r.byeClashes.length ? el('span', { class: 'warn',
+        text: r.byeClashes.map((b) => b.n + ' starters on bye ' + b.week).join(', ') }) : null,
+      (!r.holes.length && !r.byeClashes.length) ? el('span', { class: 'dim', text: 'clean' }) : null,
+    ]));
+    body.appendChild(tr);
+  }
+
+  host.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Every team in the mock' }),
+    el('p', { class: 'sub', text: mockState.label + ' · Starters is the projected points of the best legal lineup. '
+      + 'Value is how far a team beat the rest of this draft at turning its slots into points over replacement — '
+      + 'draft skill, with the luck of picking early taken out. Grades curve across this draft, and a team is '
+      + 'docked for every starting slot it cannot fill.' }),
+    el('div', { class: 'table-wrap' }, [el('table', {}, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: '' }), el('th', { class: 'right', text: '#' }), el('th', { text: 'Team' }),
+        el('th', { class: 'right', text: 'Starters' }), el('th', { class: 'right', text: 'Value' }),
+        el('th', { text: 'Shape' }), el('th', { text: 'Notes' }),
+      ])]),
+      body,
+    ])]),
+  ]));
+
+  if (!mockState.mySlot) return;
+  const me = rows.find((r) => r.slot === mockState.mySlot);
+  if (!me) return;
+
+  const deltas = me.picks.map((p) => ({ p, d: pickDelta(p) })).filter((x) => x.d !== null);
+  deltas.sort((a, b) => b.d - a.d);
+  const picks = el('tbody');
+  for (const p of me.picks.slice().sort((a, b) => a.pickNo - b.pickNo)) {
+    const d = pickDelta(p);
+    picks.appendChild(el('tr', { onclick: () => p.rank && showPlayer(p.rank) }, [
+      el('td', { class: 'num right dim', text: p.round + '.' + String(((p.pickNo - 1) % mockState.teams) + 1).padStart(2, '0') }),
+      el('td', {}, [p.rank ? playerLine({ name: p.name, pos: p.rank.pos, team: p.rank.team, bye: p.rank.bye,
+        tags: [p.rank.tier ? 'T' + p.rank.tier : null] }) : el('span', { class: 'dim', text: p.name + ' (unranked)' })]),
+      el('td', { class: 'num right muted', text: p.rank && p.rank.adp ? p.rank.adp : '—' }),
+      el('td', { class: 'num right ' + (d === null ? 'dim' : d > 6 ? 'good' : d < -12 ? 'bad' : 'muted'),
+        text: d === null ? '—' : (d > 0 ? '+' + d + ' late' : d + ' early') }),
+      el('td', { class: 'num right', text: p.rank ? fmt(p.rank.points, 0) : '—' }),
+    ]));
+  }
+
+  host.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Your picks — slot ' + me.slot + ', graded ' + me.grade }),
+    el('p', { class: 'sub', text: deltas.length
+      ? 'Best value: ' + deltas[0].p.name + ' (' + deltas[0].d + ' picks past his ADP). '
+        + 'Biggest reach: ' + deltas[deltas.length - 1].p.name + ' ('
+        + Math.abs(deltas[deltas.length - 1].d) + ' picks early).'
+      : 'No ADP data on these picks.' }),
+    el('div', { class: 'table-wrap' }, [el('table', {}, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { class: 'right', text: 'Pick' }), el('th', { text: 'Player' }),
+        el('th', { class: 'right', text: 'ADP' }), el('th', { class: 'right', text: 'vs ADP' }),
+        el('th', { class: 'right', text: 'Proj' }),
+      ])]),
+      picks,
+    ])]),
+    el('h4', { style: 'margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent)', text: 'Your starting lineup' }),
+    el('div', { class: 'starters' }, me.starters.map((e) => el('span', {
+      class: 'slot' + (e.player ? '' : ' need'),
+      text: e.slot + ' · ' + (e.player ? e.player.name : 'empty'),
+    }))),
+  ]));
 }
 
 /* ---------------------------------------------------------- league view */
@@ -2021,7 +2340,7 @@ function renderLeague() {
 
 /* ---------------------------------------------------------------- wiring */
 
-const VIEWS = ['league', 'board', 'available', 'keepers', 'sim', 'teams'];
+const VIEWS = ['league', 'board', 'available', 'keepers', 'sim', 'teams', 'grade'];
 let activeView = 'board';
 
 function showView(name) {
@@ -2042,6 +2361,7 @@ function renderActive() {
   else if (activeView === 'keepers') renderKeepers();
   else if (activeView === 'sim') renderSim();
   else if (activeView === 'teams') renderTeams();
+  else if (activeView === 'grade') renderGrade();
 }
 
 /** Keeper math depends on rosters, history and overrides — redo it, then repaint. */

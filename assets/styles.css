@@ -457,3 +457,17 @@ button.star:hover { color: var(--warn); }
 button.star.on { color: var(--warn); }
 
 .team-card.is-me { border-color: var(--accent); }
+
+/* ---------- mock grades ---------- */
+
+.grade {
+  display: inline-block; min-width: 34px; text-align: center;
+  font-weight: 800; font-size: 13px; letter-spacing: .02em;
+  padding: 3px 7px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--panel-2);
+}
+.grade.gA { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.grade.gB { color: #9ad0a0; border-color: #3c5c40; }
+.grade.gC { color: var(--warn); border-color: #5c4a1e; }
+.grade.gD, .grade.gF { color: var(--bad); border-color: #5c2626; background: rgba(229,72,77,.10); }
+tbody tr.sel { box-shadow: inset 2px 0 0 var(--accent); }
