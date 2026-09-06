@@ -141,8 +141,24 @@ every team scores negative against it. The column is therefore re-centred on the
 draft — a positive number means better than the rest of that room, and hovering
 it shows the raw figure.
 
-Pick your slot and you also get your picks one by one against ADP, your best
+Pick your team and you also get your picks one by one against ADP, your best
 value and your worst reach, and the lineup you ended up with.
+
+### Traded picks in a mock
+
+Teams are whoever actually **made** each pick, not the slot the pick sits in, so
+a traded pick is credited to the team that used it. From a Sleeper link that is
+automatic — the drafting roster comes with the data.
+
+A pasted list carries no ownership, so picks fall to the slot the snake puts
+them in. Claim your own two ways: put the pick numbers in the **your picks** box
+(`12, 13, 25, 37`), or mark those lines in the paste with a leading `*`. Other
+teams are still grouped by slot, so their trades will not show.
+
+Claiming picks out of a slot leaves a shell behind in it. Any team holding under
+half a normal share of picks is listed but graded `—` and kept out of the curve,
+so a two-player remnant cannot drag the average down and inflate everyone
+else's grade.
 
 Only QB, RB, WR and TE are graded. Kickers cannot be — there are no kicker
 rankings — and defences are excluded by choice: they are streamed week to week,

@@ -1864,8 +1864,8 @@ function renderSim() {
 
 /* ----------------------------------------------------------- mock grading */
 
-const mockState = { picks: [], teams: 12, rounds: 14, label: '', mySlot: null, error: '',
-  raw: '', id: '' };
+const mockState = { picks: [], teams: 12, rounds: 14, label: '', myOwner: null, error: '',
+  raw: '', id: '', myPicks: '', claimed: 0 };
 
 /**
  * The positions a grade is actually built from. Kickers are out because there
@@ -1914,11 +1914,12 @@ function bestLineup(players) {
 function gradeMock(picks, teams) {
   const bySlot = new Map();
   for (const p of picks) {
-    if (!bySlot.has(p.slot)) bySlot.set(p.slot, []);
-    bySlot.get(p.slot).push(p);
+    const key = p.owner || ('draft_slot:' + p.slot);
+    if (!bySlot.has(key)) bySlot.set(key, []);
+    bySlot.get(key).push(p);
   }
   const rows = [];
-  for (const [slot, list] of bySlot.entries()) {
+  for (const [owner, list] of bySlot.entries()) {
     const players = list.map((p) => p.rank).filter(Boolean);
     const line = bestLineup(players);
     let surplus = 0;
@@ -1937,7 +1938,9 @@ function gradeMock(picks, teams) {
     const counts = {};
     for (const p of players) counts[p.pos] = (counts[p.pos] || 0) + 1;
     rows.push({
-      slot,
+      owner,
+      label: (list[0] && list[0].ownerLabel) || owner,
+      slot: list[0] && list[0].slot,
       picks: list,
       players,
       starters: line.filled,
@@ -1953,6 +1956,16 @@ function gradeMock(picks, teams) {
     });
   }
 
+  // Claiming your own traded picks leaves a shell behind in the slot they came
+  // from, and a two-player roster is not a team. Anything holding well under
+  // half a normal share of picks is shown but kept out of the curve, so it
+  // cannot drag the mean down and inflate everyone else.
+  const counts = rows.map((r) => r.picks.length).sort((a, b) => a - b);
+  const median = counts[Math.floor(counts.length / 2)] || 1;
+  for (const r of rows) r.partial = r.picks.length < median * 0.5;
+  const graded = rows.filter((r) => !r.partial);
+  const curve = graded.length >= 2 ? graded : rows;
+
   // Grade on the curve of this draft: a mock is only ever good relative to the
   // room it was drafted in.
   const z = (vals) => {
@@ -1960,12 +1973,12 @@ function gradeMock(picks, teams) {
     const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (vals.length || 1)) || 1;
     return (v) => (v - mean) / sd;
   };
-  const zPoints = z(rows.map((r) => r.points));
-  const zSurplus = z(rows.map((r) => r.surplus));
+  const zPoints = z(curve.map((r) => r.points));
+  const zSurplus = z(curve.map((r) => r.surplus));
   // Value is measured against a flawless value draft, which nobody manages, so
   // in raw form every team looks negative. Re-centre it on this draft: the
   // useful question is how a team did against the room it drafted in.
-  const meanSurplus = rows.reduce((a, r) => a + r.surplus, 0) / (rows.length || 1);
+  const meanSurplus = curve.reduce((a, r) => a + r.surplus, 0) / (curve.length || 1);
   for (const r of rows) {
     r.surplusRel = Math.round((r.surplus - meanSurplus) * 10) / 10;
     r.zPoints = zPoints(r.points);
@@ -1974,8 +1987,12 @@ function gradeMock(picks, teams) {
     // a whole draft into one grade the moment every team has the same gap.
     r.score = r.zPoints * 0.65 + r.zSurplus * 0.35 - r.holes.length * 0.45;
   }
-  rows.sort((a, b) => b.score - a.score);
-  rows.forEach((r, i) => { r.rank = i + 1; r.grade = letterGrade(r.score); });
+  rows.sort((a, b) => (a.partial ? 1 : 0) - (b.partial ? 1 : 0) || b.score - a.score);
+  let n = 0;
+  rows.forEach((r) => {
+    r.grade = r.partial ? '—' : letterGrade(r.score);
+    r.rank = r.partial ? '' : (n += 1);
+  });
   return rows;
 }
 
@@ -1998,43 +2015,87 @@ async function loadMockFromSleeper(input) {
   if (!m) throw new Error('That does not look like a Sleeper draft id or URL.');
   const id = m[1];
   const draft = await api('/draft/' + id);
-  const picks = await api('/draft/' + id + '/picks');
+  const raw = (await api('/draft/' + id + '/picks')) || [];
   const teams = (draft.settings && draft.settings.teams) || 12;
   const rounds = (draft.settings && draft.settings.rounds) || 14;
+  const made = raw.filter((p) => p.player_id);
+
+  // Where picks get traded, the slot a pick sits in is not the team that made
+  // it. Group on whoever actually drafted, and only fall back to the slot when
+  // nothing better covers every pick.
+  const complete = (field) => made.length > 0 && made.every((p) => p[field] !== null && p[field] !== undefined && p[field] !== '');
+  const ownerField = complete('roster_id') ? 'roster_id' : (complete('picked_by') ? 'picked_by' : 'draft_slot');
+
   const out = [];
-  for (const p of (picks || [])) {
-    if (!p.player_id) continue;
-    const name = playerName(String(p.player_id));
+  for (const p of made) {
+    const key = String(p[ownerField]);
     out.push({
       pickNo: Number(p.pick_no),
       round: Number(p.round),
       slot: Number(p.draft_slot),
-      name,
+      owner: ownerField + ':' + key,
+      ownerLabel: mockOwnerLabel(ownerField, key, Number(p.draft_slot)),
+      name: playerName(String(p.player_id)),
       rank: rankingFor(String(p.player_id)),
     });
   }
-  return { picks: out, teams, rounds, label: (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id };
+  return {
+    picks: out, teams, rounds,
+    tradedPicksSeen: out.some((p) => p.owner !== 'draft_slot:' + p.slot) && ownerField !== 'draft_slot',
+    label: (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id
+      + (ownerField === 'draft_slot' ? ' · teams read from draft slot' : ' · teams read from who drafted'),
+  };
+}
+
+function mockOwnerLabel(field, key, slot) {
+  if (field === 'roster_id') {
+    const r = S.rosters.find((x) => String(x.roster_id) === key);
+    return r ? teamName(r.roster_id) : 'Roster ' + key;
+  }
+  if (field === 'picked_by') {
+    const u = S.users.find((x) => String(x.user_id) === key);
+    return (u && ((u.metadata && u.metadata.team_name) || u.display_name)) || 'Manager ' + key.slice(-4);
+  }
+  return 'Slot ' + slot;
 }
 
 /**
  * Fall back for mocks drafted somewhere without an API: a list of players in
  * pick order, one per line. Slots come from the snake.
  */
-function parsePastedMock(text, teams) {
+/**
+ * A pasted list carries no ownership, so picks fall to the slot the snake puts
+ * them in. Where picks have been traded that is wrong, so your own can be
+ * claimed two ways: mark the line with a leading * , or list the pick numbers.
+ */
+function parsePastedMock(text, teams, myPickSpec) {
+  const mine = new Set();
+  for (const part of String(myPickSpec || '').split(/[^0-9]+/)) {
+    const n = parseInt(part, 10);
+    if (n > 0) mine.add(n);
+  }
   const lines = String(text).split(/\n/).map((l) => l.trim()).filter(Boolean);
   const out = [];
   const missing = [];
   lines.forEach((line, i) => {
+    let raw = line;
+    const starred = /^\*/.test(raw);
+    if (starred) raw = raw.replace(/^\*+\s*/, '');
     // Tolerate "1.05 Name", "5. Name", "Name (RB - DET)" and plain names.
-    let name = line.replace(/^\s*\d+[.):]\s*/, '').replace(/^\s*\d+\.\d+\s*/, '');
+    let name = raw.replace(/^\s*\d+[.):]\s*/, '').replace(/^\s*\d+\.\d+\s*/, '');
     name = name.replace(/\s*[([].*$/, '').replace(/\s+-\s+[A-Z]{2,3}$/, '').trim();
     const rank = S.byKey.get(normName(name)) || null;
     if (!rank) missing.push(name);
     const pickNo = i + 1;
     const { round, slot } = slotOfPickIn(pickNo, teams);
-    out.push({ pickNo, round, slot, name, rank });
+    const isMine = starred || mine.has(pickNo);
+    out.push({
+      pickNo, round, slot, name, rank,
+      owner: isMine ? 'me' : 'draft_slot:' + slot,
+      ownerLabel: isMine ? 'You' : 'Slot ' + slot,
+    });
   });
-  return { picks: out, missing };
+  return { picks: out, missing, claimed: out.filter((p) => p.owner === 'me').length };
 }
 
 function slotOfPickIn(pickNo, teams) {
@@ -2116,12 +2177,23 @@ function renderGrade() {
     placeholder: '…or paste the picks, one player per line in pick order',
     oninput: (e) => { mockState.raw = e.target.value; } });
   pasteBox.value = mockState.raw;
-  const slotSel = el('select', {}, [el('option', { value: '', text: 'which slot was yours?' })]);
-  for (let i = 1; i <= mockState.teams; i += 1) {
-    slotSel.appendChild(el('option', { value: i, text: 'slot ' + i, selected: mockState.mySlot === i }));
+  // Built from whoever actually appears in the draft, since traded picks mean
+  // a team is not the same thing as a slot.
+  const owners = [];
+  const seen = new Set();
+  for (const p of mockState.picks) {
+    const key = p.owner || ('draft_slot:' + p.slot);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    owners.push({ key, label: p.ownerLabel || key });
   }
+  owners.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  const slotSel = el('select', {}, [el('option', { value: '', text: 'which team was yours?' })]
+    .concat(owners.map((o) => el('option', {
+      value: o.key, text: o.label, selected: mockState.myOwner === o.key,
+    }))));
   slotSel.addEventListener('change', () => {
-    mockState.mySlot = slotSel.value ? Number(slotSel.value) : null;
+    mockState.myOwner = slotSel.value || null;
     renderGrade();
   });
 
@@ -2134,7 +2206,8 @@ function renderGrade() {
   host.appendChild(el('div', { class: 'card' }, [
     el('h2', { text: 'Grade a mock draft' }),
     el('p', { class: 'sub', text: 'Graded against your league — its starting lineup, its scoring, these rankings. '
-      + 'Every team in the mock is scored, on the curve of that draft.' }),
+      + 'Every team in the mock is scored, on the curve of that draft. Teams come from who actually made '
+      + 'each pick, so traded picks land with the team that used them.' }),
     el('div', { class: 'row' }, [
       idInput,
       el('button', { class: 'btn primary', text: 'Grade from Sleeper', onclick: () => run(async () => {
@@ -2147,10 +2220,22 @@ function renderGrade() {
       el('label', { class: 'sub', style: 'margin:0', text: 'teams' }),
       el('input', { type: 'number', min: '2', max: '20', value: String(mockState.teams), style: 'width:70px',
         onchange: (e) => { mockState.teams = Number(e.target.value) || 12; } }),
+      el('label', { class: 'sub', style: 'margin:0', text: 'your picks' }),
+      el('input', { type: 'text', style: 'width:150px', value: mockState.myPicks,
+        placeholder: 'e.g. 12, 13, 32',
+        title: 'Pick numbers you own. Traded picks mean these need not sit in one slot. '
+          + 'You can also mark lines in the paste with a leading *. Other teams are still grouped by '
+          + 'draft slot, so any of their trades will not show.',
+        oninput: (e) => { mockState.myPicks = e.target.value; } }),
       el('button', { class: 'btn', text: 'Grade pasted picks', onclick: () => run(async () => {
-        const r = parsePastedMock(pasteBox.value, mockState.teams);
+        const r = parsePastedMock(pasteBox.value, mockState.teams, mockState.myPicks);
         if (!r.picks.length) throw new Error('No picks found in that paste.');
-        Object.assign(mockState, { picks: r.picks, missing: r.missing, label: 'pasted · ' + r.picks.length + ' picks' });
+        Object.assign(mockState, {
+          picks: r.picks, missing: r.missing, claimed: r.claimed,
+          myOwner: r.claimed ? 'me' : mockState.myOwner,
+          label: 'pasted · ' + r.picks.length + ' picks'
+            + (r.claimed ? ' · ' + r.claimed + ' claimed as yours' : ''),
+        });
       }) }),
       el('span', { class: 'spacer' }),
       slotSel,
@@ -2168,11 +2253,18 @@ function renderGrade() {
   const rows = gradeMock(mockState.picks, mockState.teams);
   const body = el('tbody');
   for (const r of rows) {
-    const mine = mockState.mySlot === r.slot;
+    const mine = mockState.myOwner === r.owner;
     const tr = el('tr', { class: mine ? 'sel' : '' });
-    tr.appendChild(el('td', {}, [el('span', { class: 'grade g' + r.grade[0], text: r.grade })]));
+    tr.appendChild(el('td', {}, [el('span', {
+      class: 'grade g' + (r.partial ? 'X' : r.grade[0]),
+      title: r.partial ? 'too few picks to grade — left out of the curve' : '',
+      text: r.grade,
+    })]));
     tr.appendChild(el('td', { class: 'num right dim', text: r.rank }));
-    tr.appendChild(el('td', { class: 'name', text: 'Slot ' + r.slot + (mine ? '  (you)' : '') }));
+    tr.appendChild(el('td', { class: 'name' }, [
+      r.label + (mine ? '  (you)' : ''),
+      el('span', { class: 'dim', style: 'font-weight:400', text: '  ' + r.picks.length + ' picks' }),
+    ]));
     tr.appendChild(el('td', { class: 'num right', text: fmt(r.points, 0) }));
     tr.appendChild(el('td', { class: 'num right ' + (r.surplusRel > 0 ? 'good' : 'bad'),
       title: 'raw surplus over a flawless value draft: ' + fmt(r.surplus, 0),
@@ -2183,10 +2275,11 @@ function renderGrade() {
         text: '  ' + (r.counts.DEF || 0) + 'DEF' }),
     ]));
     tr.appendChild(el('td', { class: 'sub', style: 'margin:0' }, [
-      r.holes.length ? el('span', { class: 'bad', text: 'no ' + r.holes.join('/') + ' ' }) : null,
+      r.partial ? el('span', { class: 'dim', text: 'too few picks to grade' }) : null,
+      (!r.partial && r.holes.length) ? el('span', { class: 'bad', text: 'no ' + r.holes.join('/') + ' ' }) : null,
       r.byeClashes.length ? el('span', { class: 'warn',
         text: r.byeClashes.map((b) => b.n + ' starters on bye ' + b.week).join(', ') }) : null,
-      (!r.holes.length && !r.byeClashes.length) ? el('span', { class: 'dim', text: 'clean' }) : null,
+      (!r.partial && !r.holes.length && !r.byeClashes.length) ? el('span', { class: 'dim', text: 'clean' }) : null,
     ]));
     body.appendChild(tr);
   }
@@ -2208,8 +2301,8 @@ function renderGrade() {
     ])]),
   ]));
 
-  if (!mockState.mySlot) return;
-  const me = rows.find((r) => r.slot === mockState.mySlot);
+  if (!mockState.myOwner) return;
+  const me = rows.find((r) => r.owner === mockState.myOwner);
   if (!me) return;
 
   const deltas = me.picks.map((p) => ({ p, d: pickDelta(p) })).filter((x) => x.d !== null);
@@ -2218,7 +2311,9 @@ function renderGrade() {
   for (const p of me.picks.slice().sort((a, b) => a.pickNo - b.pickNo)) {
     const d = pickDelta(p);
     picks.appendChild(el('tr', { onclick: () => p.rank && showPlayer(p.rank) }, [
-      el('td', { class: 'num right dim', text: p.round + '.' + String(((p.pickNo - 1) % mockState.teams) + 1).padStart(2, '0') }),
+      el('td', { class: 'num right dim',
+        title: p.slot && me.slot && p.slot !== me.slot ? 'traded pick — originally slot ' + p.slot : '',
+        text: p.round + '.' + String(((p.pickNo - 1) % mockState.teams) + 1).padStart(2, '0') }),
       el('td', {}, [p.rank ? playerLine({ name: p.name, pos: p.rank.pos, team: p.rank.team, bye: p.rank.bye,
         tags: [p.rank.tier ? 'T' + p.rank.tier : null] }) : el('span', { class: 'dim', text: p.name + ' (unranked)' })]),
       el('td', { class: 'num right muted', text: p.rank && p.rank.adp ? p.rank.adp : '—' }),
@@ -2229,7 +2324,7 @@ function renderGrade() {
   }
 
   host.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Your picks — slot ' + me.slot + ', graded ' + me.grade }),
+    el('h2', { text: 'Your picks — ' + me.label + ', graded ' + me.grade }),
     el('p', { class: 'sub', text: deltas.length
       ? 'Best value: ' + deltas[0].p.name + ' (' + deltas[0].d + ' picks past his ADP). '
         + 'Biggest reach: ' + deltas[deltas.length - 1].p.name + ' ('

@@ -471,3 +471,4 @@ button.star.on { color: var(--warn); }
 .grade.gC { color: var(--warn); border-color: #5c4a1e; }
 .grade.gD, .grade.gF { color: var(--bad); border-color: #5c2626; background: rgba(229,72,77,.10); }
 tbody tr.sel { box-shadow: inset 2px 0 0 var(--accent); }
+.grade.gX { color: var(--dim); border-style: dashed; }
