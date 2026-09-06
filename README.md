@@ -141,8 +141,14 @@ every team scores negative against it. The column is therefore re-centred on the
 draft — a positive number means better than the rest of that room, and hovering
 it shows the raw figure.
 
+Below the table every roster is laid out in grade order: the starting lineup
+that Starters actually scores, slot by slot with each player's projection and
+the round he was taken in, then the bench. A pick that came from another slot is
+marked, so a roster reads back to the draft that produced it. An empty K or DEF
+slot says *not graded* rather than looking like a gap.
+
 Pick your team and you also get your picks one by one against ADP, your best
-value and your worst reach, and the lineup you ended up with.
+value and your worst reach.
 
 ### Traded picks in a mock
 

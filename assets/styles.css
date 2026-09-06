@@ -472,3 +472,9 @@ button.star.on { color: var(--warn); }
 .grade.gD, .grade.gF { color: var(--bad); border-color: #5c2626; background: rgba(229,72,77,.10); }
 tbody tr.sel { box-shadow: inset 2px 0 0 var(--accent); }
 .grade.gX { color: var(--dim); border-style: dashed; }
+
+/* Mock roster cards: lineup slot, player, projection. */
+.team-card li .slot { flex: none; font-size: 10px; padding: 2px 5px; }
+.team-card li .num { flex: none; font-size: 11px; }
+.team-card li.benched { opacity: .62; }
+.team-card > header .grade { font-size: 11px; min-width: 28px; padding: 2px 5px; }

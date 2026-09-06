@@ -2342,6 +2342,8 @@ function renderGrade() {
     ])]),
   ]));
 
+  host.appendChild(renderMockRosters(rows));
+
   if (!mockState.myOwner) return;
   const me = rows.find((r) => r.owner === mockState.myOwner);
   if (!me) return;
@@ -2385,6 +2387,81 @@ function renderGrade() {
       text: e.slot + ' · ' + (e.player ? e.player.name : 'empty'),
     }))),
   ]));
+}
+
+/** Every roster in the mock, in grade order, so a score can be read back. */
+function renderMockRosters(rows) {
+  const wrap = el('div', { class: 'card' }, [
+    el('h2', { text: 'Rosters' }),
+    el('p', { class: 'sub', text: 'In grade order. The starting lineup is what Starters scores; '
+      + 'the round each player was taken in sits beside him. Bench is everyone left over.' }),
+  ]);
+
+  const cards = el('div', { class: 'grid-cards' });
+  for (const r of rows) {
+    // Where each player came from, so a roster reads back to the draft.
+    const pickOf = new Map();
+    for (const p of r.picks) {
+      if (p.rank) pickOf.set(p.rank.key, p);
+    }
+    const pickTag = (player) => {
+      const p = player && pickOf.get(player.key);
+      if (!p) return null;
+      const label = p.round + '.' + String(((p.pickNo - 1) % mockState.teams) + 1).padStart(2, '0');
+      const acquired = r.slot && p.slot && p.slot !== r.slot;
+      return el('span', {
+        class: acquired ? 'warn' : 'dim',
+        title: acquired ? 'traded pick — originally slot ' + p.slot : '',
+        text: label + (acquired ? ' ⇄' : ''),
+      });
+    };
+
+    const list = el('ul');
+    for (const entry of r.starters) {
+      if (entry.player) {
+        list.appendChild(el('li', {}, [
+          el('span', { class: 'slot', style: 'min-width:42px;text-align:center', text: entry.slot }),
+          playerLine({
+            name: entry.player.name, pos: entry.player.pos, team: entry.player.team,
+            bye: entry.player.bye,
+            tags: [entry.player.tier ? 'T' + entry.player.tier : null, pickTag(entry.player)],
+          }),
+          el('span', { class: 'num muted', text: fmt(entry.player.points, 0) }),
+        ]));
+      } else {
+        const scored = isGraded(entry.slot) || FLEX_SETS[entry.slot];
+        list.appendChild(el('li', {}, [
+          el('span', { class: 'slot' + (scored ? ' need' : ''), style: 'min-width:42px;text-align:center', text: entry.slot }),
+          el('span', { class: scored ? 'bad' : 'dim', style: 'flex:1',
+            text: scored ? 'empty' : 'empty — not graded' }),
+        ]));
+      }
+    }
+    if (r.bench.length) {
+      list.appendChild(el('li', { class: 'empty', style: 'padding-top:8px', text: 'BENCH' }));
+      for (const player of r.bench.slice().sort((a, b) => (b.points || 0) - (a.points || 0))) {
+        list.appendChild(el('li', { class: 'benched' }, [
+          playerLine({
+            name: player.name, pos: player.pos, team: player.team, bye: player.bye,
+            tags: [player.tier ? 'T' + player.tier : null, pickTag(player)],
+          }),
+          el('span', { class: 'num dim', text: fmt(player.points, 0) }),
+        ]));
+      }
+    }
+
+    const mine = mockState.myOwner === r.owner;
+    cards.appendChild(el('div', { class: 'team-card' + (mine ? ' is-me' : '') }, [
+      el('header', {}, [
+        el('span', { class: 'grade g' + (r.partial ? 'X' : r.grade[0]), text: r.grade }),
+        el('span', { class: 'tn', text: r.label + (mine ? ' (you)' : '') }),
+        el('span', { class: 'cnt', text: r.partial ? r.picks.length + ' picks' : fmt(r.points, 0) + ' pts' }),
+      ]),
+      list,
+    ]));
+  }
+  wrap.appendChild(cards);
+  return wrap;
 }
 
 /* ---------------------------------------------------------- league view */
