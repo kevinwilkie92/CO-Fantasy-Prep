@@ -2041,7 +2041,7 @@ function pickDelta(p) {
 }
 
 /** Pull a mock straight off Sleeper, by draft id or the URL you copied. */
-async function loadMockFromSleeper(input) {
+async function loadMockFromSleeper(input, myPickSpec) {
   const m = String(input).match(/(\d{6,})/);
   if (!m) throw new Error('That does not look like a Sleeper draft id or URL.');
   const id = m[1];
@@ -2057,24 +2057,38 @@ async function loadMockFromSleeper(input) {
   const complete = (field) => made.length > 0 && made.every((p) => p[field] !== null && p[field] !== undefined && p[field] !== '');
   const ownerField = complete('roster_id') ? 'roster_id' : (complete('picked_by') ? 'picked_by' : 'draft_slot');
 
+  // A draft that carries no ownership of its own is only a snake, and a snake
+  // knows nothing about trades: every slot gets its fourteen and your team is
+  // not among them. Then the pick list kept for this league is the only thing
+  // that knows which picks were yours, so claim them here exactly as a pasted
+  // mock does. Where the draft does carry ownership it is the better answer
+  // and the list stays out of it.
+  const bySlot = ownerField === 'draft_slot';
+  const spec = bySlot ? parsePickSpec(myPickSpec, teams) : { picks: new Set(), bad: [] };
+
   const out = [];
   for (const p of made) {
     const key = String(p[ownerField]);
+    const isMine = spec.picks.has(Number(p.pick_no));
     out.push({
       pickNo: Number(p.pick_no),
       round: Number(p.round),
       slot: Number(p.draft_slot),
-      owner: ownerField + ':' + key,
-      ownerLabel: mockOwnerLabel(ownerField, key, Number(p.draft_slot)),
+      owner: isMine ? 'me' : ownerField + ':' + key,
+      ownerLabel: isMine ? 'You' : mockOwnerLabel(ownerField, key, Number(p.draft_slot)),
       name: playerName(String(p.player_id)),
       rank: rankingFor(String(p.player_id)),
     });
   }
+  const claimed = out.filter((p) => p.owner === 'me').length;
+  const drafted = new Set(out.map((p) => p.pickNo));
   return {
-    picks: out, teams, rounds,
-    tradedPicksSeen: out.some((p) => p.owner !== 'draft_slot:' + p.slot) && ownerField !== 'draft_slot',
+    picks: out, teams, rounds, claimed, badSpec: spec.bad, readBySlot: bySlot,
+    unmatchedPicks: Array.from(spec.picks).filter((n) => !drafted.has(n)),
+    tradedPicksSeen: out.some((p) => p.owner !== 'draft_slot:' + p.slot) && !bySlot,
     label: (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id
-      + (ownerField === 'draft_slot' ? ' · teams read from draft slot' : ' · teams read from who drafted'),
+      + (bySlot ? ' · teams read from draft slot' : ' · teams read from who drafted')
+      + (claimed ? ' · ' + claimed + ' claimed as yours' : ''),
   };
 }
 
@@ -2243,8 +2257,10 @@ function renderGrade() {
     el('div', { class: 'row' }, [
       idInput,
       el('button', { class: 'btn primary', text: 'Grade from Sleeper', onclick: () => run(async () => {
-        const r = await loadMockFromSleeper(idInput.value.trim());
-        Object.assign(mockState, r, { missing: [] });
+        const r = await loadMockFromSleeper(idInput.value.trim(), mockState.myPicks);
+        if (r.badSpec.length) throw new Error('Could not read pick(s): ' + r.badSpec.join(', ')
+          + '. Use round.pick like 2.05, or an overall pick number.');
+        Object.assign(mockState, r, { missing: [], myOwner: r.claimed ? 'me' : mockState.myOwner });
       }) }),
     ]),
     el('div', { style: 'margin-top:10px' }, [pasteBox]),
@@ -2278,6 +2294,12 @@ function renderGrade() {
       slotSel,
     ]),
     mockState.error ? el('p', { class: 'sub bad', style: 'margin-top:8px', text: mockState.error }) : null,
+    (mockState.picks.length && !mockState.claimed
+      && mockState.picks.every((p) => String(p.owner).indexOf('draft_slot:') === 0))
+      ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'None of your picks were claimed, so every '
+        + 'team here is a plain draft slot and none of them is yours. Check the "your picks" field against the '
+        + 'rounds this mock actually ran.' })
+      : null,
     (mockState.unmatchedPicks && mockState.unmatchedPicks.length)
       ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'Pick(s) beyond the end of this draft, so not claimed: '
         + mockState.unmatchedPicks.join(', ') })
