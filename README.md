@@ -144,8 +144,12 @@ it shows the raw figure.
 Pick your slot and you also get your picks one by one against ADP, your best
 value and your worst reach, and the lineup you ended up with.
 
-Kickers are not scored: there are no kicker rankings in the data, so a K slot is
-neither filled nor docked for.
+Only QB, RB, WR and TE are graded. Kickers cannot be — there are no kicker
+rankings — and defences are excluded by choice: they are streamed week to week,
+so which one a team ended up with says nothing about how it drafted. Both are
+still shown on the roster, but an empty K or DEF slot does not dock a team, a
+defence adds nothing to Starters or Value, and a defence on bye does not count
+toward a bye clash.
 
 ## How open picks are projected
 

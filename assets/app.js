@@ -1867,6 +1867,15 @@ function renderSim() {
 const mockState = { picks: [], teams: 12, rounds: 14, label: '', mySlot: null, error: '',
   raw: '', id: '' };
 
+/**
+ * The positions a grade is actually built from. Kickers are out because there
+ * are no kicker rankings at all; defences are out by choice — they are streamed
+ * week to week, so which one a team ended up with says nothing about the draft.
+ * Both are still shown on the roster, neither moves the score.
+ */
+const GRADED_POS = ['QB', 'RB', 'WR', 'TE'];
+const isGraded = (pos) => GRADED_POS.indexOf(pos) !== -1;
+
 /** Best legal starting lineup these players can field, and what it projects. */
 function bestLineup(players) {
   const slots = starterSlots();
@@ -1908,10 +1917,6 @@ function gradeMock(picks, teams) {
     if (!bySlot.has(p.slot)) bySlot.set(p.slot, []);
     bySlot.get(p.slot).push(p);
   }
-  // A K slot cannot be scored — there are no kicker rankings — so it is left
-  // out of the holes a grade is docked for.
-  const ranked = new Set(S.rankings.map((r) => r.pos));
-
   const rows = [];
   for (const [slot, list] of bySlot.entries()) {
     const players = list.map((p) => p.rank).filter(Boolean);
@@ -1919,14 +1924,15 @@ function gradeMock(picks, teams) {
     let surplus = 0;
     let matched = 0;
     for (const p of list) {
-      if (!p.rank || p.rank.vor === null || p.rank.vor === undefined) continue;
+      if (!p.rank || !isGraded(p.rank.pos)) continue;
+      if (p.rank.vor === null || p.rank.vor === undefined) continue;
       surplus += p.rank.vor - expectedVorAtPick(p.pickNo);
       matched += 1;
     }
     const byes = {};
     for (const e of line.filled) {
-      const bye = e.player && e.player.bye;
-      if (bye) byes[bye] = (byes[bye] || 0) + 1;
+      if (!e.player || !isGraded(e.player.pos)) continue;
+      if (e.player.bye) byes[e.player.bye] = (byes[e.player.bye] || 0) + 1;
     }
     const counts = {};
     for (const p of players) counts[p.pos] = (counts[p.pos] || 0) + 1;
@@ -1937,8 +1943,9 @@ function gradeMock(picks, teams) {
       starters: line.filled,
       bench: line.bench,
       points: Math.round(line.points * 10) / 10,
-      holes: line.holes.filter((h) => FLEX_SETS[h] || ranked.has(h)),
-      unscorable: line.holes.filter((h) => !FLEX_SETS[h] && !ranked.has(h)),
+      // Only ungraded starting slots dock a team; an empty K or DEF does not.
+      holes: line.holes.filter((h) => FLEX_SETS[h] || isGraded(h)),
+      unscorable: line.holes.filter((h) => !FLEX_SETS[h] && !isGraded(h)),
       surplus: Math.round(surplus * 10) / 10,
       matched,
       counts,
@@ -2170,8 +2177,11 @@ function renderGrade() {
     tr.appendChild(el('td', { class: 'num right ' + (r.surplusRel > 0 ? 'good' : 'bad'),
       title: 'raw surplus over a flawless value draft: ' + fmt(r.surplus, 0),
       text: (r.surplusRel > 0 ? '+' : '') + fmt(r.surplusRel, 0) }));
-    tr.appendChild(el('td', { class: 'muted', text: ['QB', 'RB', 'WR', 'TE', 'DEF']
-      .map((p) => (r.counts[p] || 0) + p).join(' ') }));
+    tr.appendChild(el('td', { class: 'muted' }, [
+      GRADED_POS.map((p) => (r.counts[p] || 0) + p).join(' '),
+      el('span', { class: 'dim', title: 'not graded',
+        text: '  ' + (r.counts.DEF || 0) + 'DEF' }),
+    ]));
     tr.appendChild(el('td', { class: 'sub', style: 'margin:0' }, [
       r.holes.length ? el('span', { class: 'bad', text: 'no ' + r.holes.join('/') + ' ' }) : null,
       r.byeClashes.length ? el('span', { class: 'warn',
@@ -2186,7 +2196,8 @@ function renderGrade() {
     el('p', { class: 'sub', text: mockState.label + ' · Starters is the projected points of the best legal lineup. '
       + 'Value is how far a team beat the rest of this draft at turning its slots into points over replacement — '
       + 'draft skill, with the luck of picking early taken out. Grades curve across this draft, and a team is '
-      + 'docked for every starting slot it cannot fill.' }),
+      + 'docked for every starting slot it cannot fill. Kickers and defences carry no weight either way — '
+      + 'they are shown, but neither scores nor docks.' }),
     el('div', { class: 'table-wrap' }, [el('table', {}, [
       el('thead', {}, [el('tr', {}, [
         el('th', { text: '' }), el('th', { class: 'right', text: '#' }), el('th', { text: 'Team' }),
