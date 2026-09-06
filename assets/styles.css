@@ -478,3 +478,15 @@ tbody tr.sel { box-shadow: inset 2px 0 0 var(--accent); }
 .team-card li .num { flex: none; font-size: 11px; }
 .team-card li.benched { opacity: .62; }
 .team-card > header .grade { font-size: 11px; min-width: 28px; padding: 2px 5px; }
+
+/* A bar with no verdict attached still needs a fill. */
+.bar i { background: var(--muted); }
+
+/* The grade breakdown: a running total that reads as the sum it is. */
+table.explain td:first-child { white-space: normal; min-width: 190px; }
+table.explain tr.total td { border-top: 1px solid var(--line); }
+table.explain tr.total { background: rgba(66, 171, 76, 0.06); }
+
+/* Placings and counts read as one token; wrapping "1st of 13" over three
+   lines makes a narrow table unreadable. */
+.nw { white-space: nowrap; }

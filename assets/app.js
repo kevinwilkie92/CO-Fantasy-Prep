@@ -1968,6 +1968,18 @@ function gradeMock(picks, teams) {
     }
     const counts = {};
     for (const p of players) counts[p.pos] = (counts[p.pos] || 0) + 1;
+    // What each position group contributed, so a grade can be read as "the
+    // backs carried it and the receivers did not" rather than as one number.
+    // A flex player counts toward the group he actually plays in.
+    const posStart = {};
+    const posAll = {};
+    for (const pos of GRADED_POS) { posStart[pos] = 0; posAll[pos] = 0; }
+    for (const e of line.filled) {
+      if (e.player && isGraded(e.player.pos)) posStart[e.player.pos] += e.player.points || 0;
+    }
+    for (const pl of players) {
+      if (isGraded(pl.pos)) posAll[pl.pos] += pl.points || 0;
+    }
     rows.push({
       owner,
       label: (list[0] && list[0].ownerLabel) || owner,
@@ -1982,7 +1994,7 @@ function gradeMock(picks, teams) {
       unscorable: line.holes.filter((h) => !FLEX_SETS[h] && !isGraded(h)),
       surplus: Math.round(surplus * 10) / 10,
       matched,
-      counts,
+      counts, posStart, posAll,
       byeClashes: Object.entries(byes).filter(([, n]) => n >= 3).map(([week, n]) => ({ week, n })),
     });
   }
@@ -2018,6 +2030,38 @@ function gradeMock(picks, teams) {
     // a whole draft into one grade the moment every team has the same gap.
     r.score = r.zPoints * 0.65 + r.zSurplus * 0.35 - r.holes.length * 0.45;
   }
+  // Rank every piece of the grade across the room, so each number can be read
+  // as a placing and not only as a total. Teams left out of the curve are
+  // ranked against nothing and carry no placing.
+  const rankBy = (get) => {
+    const ordered = curve.slice().sort((a, b) => get(b) - get(a));
+    const vals = ordered.map(get);
+    const n = vals.length;
+    const median = n ? (n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2) : 0;
+    const at = (r) => {
+      const i = ordered.indexOf(r);
+      return { rank: i < 0 ? null : i + 1, of: n, best: vals[0] || 0, worst: vals[n - 1] || 0,
+        median: Math.round(median * 10) / 10 };
+    };
+    return at;
+  };
+  const pointsAt = rankBy((r) => r.points);
+  const valueAt = rankBy((r) => r.surplusRel);
+  const startAt = {};
+  const depthAt = {};
+  for (const pos of GRADED_POS) {
+    startAt[pos] = rankBy((r) => r.posStart[pos] || 0);
+    depthAt[pos] = rankBy((r) => r.posAll[pos] || 0);
+  }
+  for (const r of rows) {
+    r.pointsRank = pointsAt(r);
+    r.valueRank = valueAt(r);
+    r.posRank = {};
+    for (const pos of GRADED_POS) {
+      r.posRank[pos] = { start: startAt[pos](r), depth: depthAt[pos](r) };
+    }
+  }
+
   rows.sort((a, b) => (a.partial ? 1 : 0) - (b.partial ? 1 : 0) || b.score - a.score);
   let n = 0;
   rows.forEach((r) => {
@@ -2027,11 +2071,21 @@ function gradeMock(picks, teams) {
   return rows;
 }
 
+const GRADE_SCALE = [[1.45, 'A+'], [1.0, 'A'], [0.65, 'A-'], [0.35, 'B+'], [0.1, 'B'],
+  [-0.12, 'B-'], [-0.35, 'C+'], [-0.62, 'C'], [-0.9, 'C-'], [-1.3, 'D']];
+
 function letterGrade(z) {
-  const scale = [[1.45, 'A+'], [1.0, 'A'], [0.65, 'A-'], [0.35, 'B+'], [0.1, 'B'],
-    [-0.12, 'B-'], [-0.35, 'C+'], [-0.62, 'C'], [-0.9, 'C-'], [-1.3, 'D']];
-  for (const [cut, letter] of scale) if (z >= cut) return letter;
+  for (const [cut, letter] of GRADE_SCALE) if (z >= cut) return letter;
   return 'F';
+}
+
+/** The band a score sits in: what it cleared, and what the next step up costs. */
+function gradeBand(score) {
+  const i = GRADE_SCALE.findIndex(([cut]) => score >= cut);
+  const here = i < 0 ? ['F', -Infinity] : [GRADE_SCALE[i][1], GRADE_SCALE[i][0]];
+  const up = i === 0 ? null : (i < 0 ? GRADE_SCALE[GRADE_SCALE.length - 1] : GRADE_SCALE[i - 1]);
+  const down = i < 0 ? null : (GRADE_SCALE[i + 1] || [-Infinity, 'F']);
+  return { letter: here[0], floor: here[1], up, down };
 }
 
 /** Reach or steal on a single pick, against ADP. */
@@ -2364,11 +2418,12 @@ function renderGrade() {
     ])]),
   ]));
 
-  host.appendChild(renderMockRosters(rows));
-
-  if (!mockState.myOwner) return;
-  const me = rows.find((r) => r.owner === mockState.myOwner);
-  if (!me) return;
+  const me = mockState.myOwner ? rows.find((r) => r.owner === mockState.myOwner) : null;
+  if (!me) { host.appendChild(renderMockRosters(rows)); return; }
+  if (!me.partial) {
+    host.appendChild(renderGradeExplainer(me));
+    host.appendChild(renderPosGroups(me));
+  }
 
   const deltas = me.picks.map((p) => ({ p, d: pickDelta(p) })).filter((x) => x.d !== null);
   deltas.sort((a, b) => b.d - a.d);
@@ -2409,6 +2464,146 @@ function renderGrade() {
       text: e.slot + ' · ' + (e.player ? e.player.name : 'empty'),
     }))),
   ]));
+
+  host.appendChild(renderMockRosters(rows));
+}
+
+/** Ordinal placing, so "5 of 12" reads as a finish rather than a raw number. */
+function placing(r) {
+  if (!r || !r.rank) return '—';
+  const n = r.rank;
+  const suffix = (n % 100 >= 11 && n % 100 <= 13) ? 'th'
+    : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th';
+  return n + suffix + ' of ' + r.of;
+}
+
+/**
+ * The arithmetic behind one team's letter, laid out. A grade nobody can check
+ * is only an opinion, so every term is shown with the number that produced it
+ * and what it was worth.
+ */
+function renderGradeExplainer(me) {
+  const band = gradeBand(me.score);
+  const startTerm = me.zPoints * 0.65;
+  const valueTerm = me.zSurplus * 0.35;
+  const holeTerm = -me.holes.length * 0.45;
+  const sd = (z) => (z >= 0 ? '+' : '') + fmt(z, 2) + ' SD';
+
+  const term = (name, detail, number, rank, weight, contrib) => el('tr', {}, [
+    el('td', {}, [el('div', { text: name }), el('div', { class: 'dim', style: 'font-size:11px', text: detail })]),
+    el('td', { class: 'num right', text: number }),
+    el('td', { class: 'num right nw muted', text: rank }),
+    el('td', { class: 'num right nw dim', text: weight }),
+    el('td', { class: 'num right ' + (contrib > 0.001 ? 'good' : contrib < -0.001 ? 'bad' : 'dim'),
+      text: (contrib > 0 ? '+' : '') + fmt(contrib, 2) }),
+  ]);
+
+  const body = el('tbody', {}, [
+    term('Starters', 'projected points of your best legal lineup',
+      fmt(me.points, 0), placing(me.pointsRank), '65%', startTerm),
+    term('Value', 'points over replacement your picks returned, against what those slots were worth',
+      (me.surplusRel > 0 ? '+' : '') + fmt(me.surplusRel, 0), placing(me.valueRank), '35%', valueTerm),
+    term('Unfilled starting slots', me.holes.length ? 'no ' + me.holes.join(', ') : 'every graded slot filled',
+      String(me.holes.length), '', '−0.45 each', holeTerm),
+  ]);
+  body.appendChild(el('tr', { class: 'total' }, [
+    el('td', {}, [el('strong', { text: 'Score' })]),
+    el('td', {}), el('td', {}), el('td', {}),
+    el('td', { class: 'num right' }, [el('strong', { text: (me.score > 0 ? '+' : '') + fmt(me.score, 2) })]),
+  ]));
+
+  const gap = (target) => target ? fmt(Math.abs(target[0] - me.score), 2) : null;
+  return el('div', { class: 'card' }, [
+    el('h2', {}, [
+      'Why this grade — ',
+      el('span', { class: 'grade g' + (me.partial ? 'X' : me.grade[0]), text: me.grade }),
+      el('span', { class: 'dim', style: 'font-weight:400;font-size:12px', text: '  ' + me.label }),
+    ]),
+    el('p', { class: 'sub', text: 'Two things are measured, and they are not the same. Starters asks how much '
+      + 'this roster projects to score. Value asks how well the picks were spent — every pick is worth a '
+      + 'certain amount of production by where it sat in the draft, and Value is what your players returned '
+      + 'over that. A team can draft well and still trail one that simply picked earlier, so both are kept.' }),
+    el('p', { class: 'sub', text: 'Neither is scored in raw points. Each is turned into how many standard '
+      + 'deviations you sit from this draft’s average, which is what makes the grade a curve: you are '
+      + 'measured against the eleven teams you actually drafted against, not against a fixed bar. Starters is '
+      + sd(me.zPoints) + ' from the room, Value ' + sd(me.zSurplus) + '.' }),
+    el('div', { class: 'table-wrap' }, [el('table', { class: 'explain' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: 'Component' }), el('th', { class: 'right', text: 'You' }),
+        el('th', { class: 'right', text: 'Rank' }), el('th', { class: 'right', text: 'Weight' }),
+        el('th', { class: 'right', text: 'Score' }),
+      ])]),
+      body,
+    ])]),
+    el('p', { class: 'sub', style: 'margin-top:10px', text: fmt(me.score, 2) + ' lands in ' + band.letter
+      + (band.up ? ' · ' + band.up[1] + ' starts at ' + fmt(band.up[0], 2) + ', ' + gap(band.up) + ' away'
+        : ' · nothing above it')
+      + (band.down && band.down[0] > -Infinity
+        ? ' · ' + band.down[1] + ' begins at ' + fmt(band.down[0], 2) + ', ' + gap(band.down) + ' below' : '') }),
+    me.pointsRank.of !== mockState.teams
+      ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'Ranks run across '
+        + me.pointsRank.of + ' teams, not ' + mockState.teams + '. Claiming your traded picks leaves the slots '
+        + 'they came from short, and a pasted mock only knows about your trades — not the ones those managers '
+        + 'made to replace them. The thin slots are still graded, so read a placing as close rather than exact.' })
+      : null,
+    el('p', { class: 'sub dim', text: 'Kickers and defences are left out of all of it — they are streamed '
+      + 'week to week, so which one you ended up with says nothing about the draft. Bye clashes are flagged '
+      + 'but do not move the score: they are a schedule problem to solve on waivers, not a bad pick.'
+      + (me.byeClashes.length ? ' Yours: ' + me.byeClashes.map((b) => b.n + ' starters on bye ' + b.week).join(', ') + '.' : '') }),
+  ]);
+}
+
+/**
+ * Where each position group finished against the room. The grade is one
+ * number for a roster built out of four separate markets, and a team is
+ * usually strong in some of them and thin in others.
+ */
+function renderPosGroups(me) {
+  const body = el('tbody');
+  for (const pos of GRADED_POS) {
+    const start = me.posRank[pos].start;
+    const depth = me.posRank[pos].depth;
+    const mine = me.posStart[pos] || 0;
+    const vsMedian = mine - start.median;
+    const span = Math.max(start.best, 1);
+    body.appendChild(el('tr', {}, [
+      el('td', {}, [el('span', { class: 'pos ' + pos, text: pos }),
+        el('span', { class: 'dim nw', style: 'font-size:11px', text: '  ' + (me.counts[pos] || 0) + ' rostered' })]),
+      el('td', { class: 'num right', text: fmt(mine, 0) }),
+      el('td', {}, [el('div', { class: 'bar' + (start.rank && start.rank <= 4 ? ' up' : start.rank && start.rank >= 9 ? ' risk' : '') },
+        [el('i', { style: 'width:' + Math.max(2, Math.round((mine / span) * 100)) + '%' })])]),
+      el('td', { class: 'num right nw ' + (start.rank && start.rank <= 4 ? 'good' : start.rank && start.rank >= 9 ? 'bad' : 'muted'),
+        text: placing(start) }),
+      el('td', { class: 'num right muted', text: fmt(start.median, 0) }),
+      el('td', { class: 'num right ' + (Math.round(vsMedian) > 0 ? 'good' : Math.round(vsMedian) < 0 ? 'bad' : 'dim'),
+        text: (vsMedian > 0 ? '+' : '') + fmt(vsMedian, 0) }),
+      el('td', { class: 'num right dim', text: fmt(me.posAll[pos] || 0, 0) }),
+      el('td', { class: 'num right nw muted', text: placing(depth) }),
+    ]));
+  }
+
+  const ranked = GRADED_POS.filter((p) => me.posRank[p].start.rank)
+    .sort((a, b) => me.posRank[a].start.rank - me.posRank[b].start.rank);
+  const read = ranked.length
+    ? 'Strongest group: ' + ranked[0] + ' (' + placing(me.posRank[ranked[0]].start) + '). '
+      + 'Weakest: ' + ranked[ranked.length - 1] + ' (' + placing(me.posRank[ranked[ranked.length - 1]].start) + ').'
+    : 'Not enough teams on the curve to rank the groups.';
+
+  return el('div', { class: 'card' }, [
+    el('h2', { text: 'Position groups against the league' }),
+    el('p', { class: 'sub', text: 'Starting points counts only what actually starts, with a flex player counted '
+      + 'in the group he plays in — a fourth back who never cracks the lineup adds nothing here. Roster '
+      + 'points counts everyone you hold at the position, which is the depth behind the starters. ' + read }),
+    el('div', { class: 'table-wrap' }, [el('table', {}, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: 'Group' }), el('th', { class: 'right', text: 'Starting' }), el('th', { text: '' }),
+        el('th', { class: 'right', text: 'Rank' }), el('th', { class: 'right', text: 'League med' }),
+        el('th', { class: 'right', text: 'vs med' }), el('th', { class: 'right', text: 'Roster' }),
+        el('th', { class: 'right', text: 'Depth rank' }),
+      ])]),
+      body,
+    ])]),
+  ]);
 }
 
 /** Every roster in the mock, in grade order, so a score can be read back. */
