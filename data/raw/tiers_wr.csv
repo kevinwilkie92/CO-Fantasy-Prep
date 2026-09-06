@@ -1,132 +1,132 @@
-Rank,Name,Team,Bye,ADP,Tier
-1,Ja'Marr Chase,CIN,6,1.04,1
-2,Puka Nacua,LAR,11,1.05,1
-3,Jaxon Smith-Njigba,SEA,11,1.06,2
-4,Amon-Ra St. Brown,DET,6,1.09,2
-5,CeeDee Lamb,DAL,14,1.11,2
-6,Justin Jefferson,MIN,6,1.11,3
-7,A.J. Brown,NE,11,2.05,3
-8,Chris Olave,NO,8,3.06,3
-9,Nico Collins,HOU,8,3.01,3
-10,Garrett Wilson,NYJ,13,4.11,3
-11,Drake London,ATL,11,2.07,3
-12,George Pickens,DAL,14,2.11,3
-13,Rashee Rice,KC,5,3.06,3
-14,Malik Nabers,NYG,8,3.03,4
-15,Zay Flowers,BAL,13,4.05,4
-16,DeVonta Smith,PHI,10,3.08,4
-17,Jaylen Waddle,DEN,10,4.09,5
-18,Ladd McConkey,LAC,7,4.02,5
-19,Emeka Egbuka,TB,10,4.04,5
-20,Tetairoa McMillan,CAR,5,4.03,5
-21,Tee Higgins,CIN,6,3.10,5
-22,Carnell Tate,TEN,9,6.07,5
-23,Luther Burden III,CHI,10,5.07,6
-24,Christian Watson,GB,11,6.09,6
-25,Parker Washington,JAX,7,7.02,6
-26,Terry McLaurin,WAS,7,5.07,6
-27,Jameson Williams,DET,6,5.12,6
-28,DJ Moore,BUF,7,5.08,6
-29,Davante Adams,LAR,11,5.02,6
-30,Mike Evans,SF,8,6.02,7
-31,Rome Odunze,CHI,10,6.04,7
-32,Marvin Harrison Jr.,ARI,14,7.05,7
-33,DK Metcalf,PIT,9,7.03,7
-34,Alec Pierce,IND,13,9.02,8
-35,Brian Thomas Jr.,JAX,7,7.03,8
-36,Chris Godwin Jr.,TB,10,8.10,8
-37,Quentin Johnston,LAC,7,10.07,8
-38,Michael Pittman Jr.,PIT,9,9.09,8
-39,Wan'Dale Robinson,TEN,9,10.11,8
-40,Michael Wilson,ARI,14,8.02,9
-41,Stefon Diggs,WAS,7,9.12,9
-42,Courtland Sutton,DEN,10,7.08,9
-43,Jordan Addison,MIN,6,9.08,9
-44,De'Zhaun Stribling,SF,8,12.05,9
-45,Jayden Reed,GB,11,10.02,9
-46,Josh Downs,IND,13,10.04,9
-47,Jakobi Meyers,JAX,7,11.03,9
-48,Romeo Doubs,NE,11,11.12,9
-49,Khalil Shakir,BUF,7,13.01,9
-50,Makai Lemon,PHI,10,8.06,10
-51,Xavier Worthy,KC,5,12.06,10
-52,Malik Washington,MIA,6,15.08,10
-53,Jalen Coker,CAR,5,13.03,10
-54,Rashid Shaheed,SEA,11,13.04,10
-55,Kayshon Boutte,HOU,8,17.09,10
-56,KC Concepcion,CLE,11,11.02,10
-57,Matthew Golden,GB,11,11.08,10
-58,Keenan Allen,IND,13,17.08,10
-59,Tre Tucker,LV,13,17.10,10
-60,Jordyn Tyson,NO,8,9.04,10
-61,Omar Cooper Jr.,NYJ,13,17.02,10
-62,Jauan Jennings,MIN,6,18.09,10
-63,Deebo Samuel Sr.,SF,8,11.11,10
-64,Denzel Boston,CLE,11,15.05,10
-65,Dontayvion Wicks,PHI,10,,10
-66,Pat Bryant,DEN,10,19.11,10
-67,Jalen Nailor,LV,13,16.04,10
-68,Travis Hunter,JAX,7,14.11,11
-69,Cooper Kupp,SEA,11,17.06,11
-70,Jerry Jeudy,CLE,11,16.08,11
-71,DeMario Douglas,NE,11,,11
-72,Malachi Fields,NYG,8,19.03,11
-73,Ja'Kobi Lane,BAL,13,14.05,11
-74,Tank Dell,HOU,8,16.08,11
-75,Adonai Mitchell,NYJ,13,20.03,11
-76,Germie Bernard,PIT,9,20.02,11
-77,Cyrus Allen,KC,5,15.09,11
-78,Kyle Williams,NE,11,19.06,11
-79,Calvin Ridley,TEN,9,22.01,11
-80,Tre' Harris,LAC,7,20.03,11
-81,Keon Coleman,BUF,7,20.07,11
-82,Ryan Flournoy,DAL,14,20.03,11
-83,Zachariah Branch,ATL,11,18.05,11
-84,Caleb Douglas,MIA,6,17.05,11
-85,Darius Slayton,NYG,8,,11
-86,Devaughn Vele,NO,8,20.12,11
-87,Jaylin Noel,HOU,8,18.10,11
-88,Xavier Hutchinson,HOU,8,,11
-89,Jalen Tolbert,MIA,6,,11
-90,Tory Horton,SEA,11,20.01,11
-91,Rashod Bateman,BAL,13,20.05,11
-92,Isaac TeSlaa,DET,6,19.12,11
-93,Jalen McMillan,TB,10,18.07,11
-94,Antonio Williams,WAS,7,20.08,11
-95,Jack Bech,LV,13,20.10,11
-96,Troy Franklin,DEN,10,21.02,11
-97,Chris Bell,MIA,6,21.01,11
-98,Elic Ayomanor,TEN,9,21.02,11
-99,Andrei Iosivas,CIN,6,,11
-100,Tyquan Thornton,KC,5,,11
-101,Tez Johnson,TB,10,,11
-102,Darnell Mooney,NYG,8,21.09,11
-103,Chimere Dike,TEN,9,20.01,11
-104,Ted Hurst III,TB,10,20.12,11
-105,Jahan Dotson,ATL,11,,11
-106,Christian Kirk,SF,8,21.02,11
-107,Kendrick Bourne,ARI,14,,11
-108,Malik Benson,LV,13,,11
-109,Bryce Lance,NO,8,,11
-110,Kalif Raymond,CHI,10,,11
-111,Roman Wilson,PIT,9,,11
-112,Olamide Zaccheaus,ATL,11,,11
-113,Marvin Mims Jr.,DEN,10,19.04,11
-114,Jordan Whittington,LAR,11,,11
-115,Mack Hollins,NE,11,,11
-116,Treylon Burks,WAS,7,,11
-117,Dont'e Thornton Jr.,LV,13,,11
-118,Brenen Thompson,LAC,7,,11
-119,Xavier Legette,CAR,5,,11
-120,Elijah Sarratt,BAL,13,20.01,11
-121,Calvin Austin III,NYG,8,,11
-122,Skyler Bell,BUF,7,,11
-123,Van Jefferson,FA,,46.10,11
-124,Tutu Atwell,LAR,11,,11
-125,Devontez Walker,BAL,13,,11
-126,Jaylin Lane,WAS,7,,11
-127,Hollywood Brown,PHI,10,,11
-128,Cedric Tillman,NO,8,56.07,11
-129,Chris Brazzell II,CAR,5,34.04,11
-130,Zavion Thomas,CHI,10,,11
-131,Kendrick Law,DET,6,,11
+Rank,Name,Team,Bye,ADP,Tier,Points,Risk,Upside
+1,Ja'Marr Chase,CIN,6,1.04,1,338.8,3.2,9.7
+2,Jaxon Smith-Njigba,SEA,11,1.07,2,320.8,2.0,9.7
+3,Puka Nacua,LAR,11,1.05,2,310.7,8.0,9.6
+4,Amon-Ra St. Brown,DET,6,1.08,2,309.9,1.0,9.7
+5,CeeDee Lamb,DAL,14,1.11,2,288.4,2.6,9.3
+6,Justin Jefferson,MIN,6,1.11,3,259.8,4.7,9.5
+7,A.J. Brown,NE,11,2.06,3,257.8,5.3,8.0
+8,Chris Olave,NO,8,3.06,3,255.8,6.2,8.8
+9,Nico Collins,HOU,8,3.01,3,255.0,4.6,8.9
+10,Garrett Wilson,NYJ,13,4.11,3,253.5,4.9,8.1
+11,Drake London,ATL,11,2.07,3,252.5,4.0,9.1
+12,George Pickens,DAL,14,2.10,3,251.9,5.0,8.9
+13,Rashee Rice,KC,5,3.06,3,251.1,9.5,8.3
+14,Malik Nabers,NYG,8,3.03,4,248.8,7.8,9.0
+15,DeVonta Smith,PHI,10,3.08,4,244.3,3.4,7.6
+16,Zay Flowers,BAL,13,4.05,4,244.0,4.3,7.5
+17,Jaylen Waddle,DEN,10,4.09,5,242.0,5.0,7.7
+18,Ladd McConkey,LAC,7,3.12,5,240.2,4.7,6.8
+19,Emeka Egbuka,TB,10,4.03,5,236.4,5.5,8.1
+20,Tetairoa McMillan,CAR,5,4.02,5,235.4,4.0,8.2
+21,Tee Higgins,CIN,6,3.11,5,234.0,6.1,8.3
+22,Carnell Tate,TEN,9,6.08,5,231.6,5.9,6.8
+23,Davante Adams,LAR,11,5.02,5,229.5,5.2,7.8
+24,Luther Burden III,CHI,10,5.07,6,228.5,5.5,7.8
+25,Christian Watson,GB,11,6.10,6,225.6,6.6,8.1
+26,Parker Washington,JAX,7,7.01,6,224.0,4.3,6.2
+27,Terry McLaurin,WAS,7,5.07,6,221.3,4.4,6.8
+28,Jameson Williams,DET,6,6.01,6,220.6,5.3,7.7
+29,DJ Moore,BUF,7,5.06,6,220.4,4.2,7.1
+30,Mike Evans,SF,8,6.03,7,216.7,7.8,7.5
+31,Rome Odunze,CHI,10,6.05,7,215.2,3.5,7.3
+32,Marvin Harrison Jr.,ARI,14,7.04,7,214.0,6.2,7.3
+33,DK Metcalf,PIT,9,7.03,7,211.2,4.4,7.1
+34,Alec Pierce,IND,13,9.02,8,209.3,5.8,6.9
+35,Brian Thomas Jr.,JAX,7,7.02,8,208.1,6.5,7.5
+36,Chris Godwin Jr.,TB,10,8.09,8,199.8,4.5,6.4
+37,Quentin Johnston,LAC,7,10.06,8,194.1,6.3,6.4
+38,Michael Pittman Jr.,PIT,9,9.08,8,193.1,3.5,4.9
+39,Michael Wilson,ARI,14,8.02,8,190.3,3.8,6.6
+40,Wan'Dale Robinson,TEN,9,10.11,8,188.4,4.6,4.7
+41,Stefon Diggs,WAS,7,9.12,9,182.1,5.3,5.0
+42,Courtland Sutton,DEN,10,7.07,9,180.6,5.0,6.0
+43,Jordan Addison,MIN,6,9.07,9,179.1,3.7,7.2
+44,De'Zhaun Stribling,SF,8,12.06,9,176.7,5.3,5.5
+45,Jayden Reed,GB,11,10.02,9,174.2,4.2,4.7
+46,Josh Downs,IND,13,10.06,9,168.6,4.2,7.3
+47,Jakobi Meyers,JAX,7,11.07,9,165.4,2.7,5.2
+48,Romeo Doubs,NE,11,11.12,9,163.7,3.9,6.0
+49,Khalil Shakir,BUF,7,13.01,9,162.4,2.8,5.1
+50,KC Concepcion,CLE,11,10.12,9,162.1,5.9,6.7
+51,Makai Lemon,PHI,10,8.07,10,161.1,6.6,6.9
+52,Xavier Worthy,KC,5,12.07,10,160.3,6.2,6.0
+53,Malik Washington,MIA,6,15.08,10,159.3,4.6,5.1
+54,Jalen Coker,CAR,5,13.03,10,157.4,3.7,5.8
+55,Rashid Shaheed,SEA,11,13.05,10,156.6,4.4,5.3
+56,Matthew Golden,GB,11,11.06,10,155.2,5.2,6.8
+57,Kayshon Boutte,HOU,8,17.06,10,154.8,4.4,5.8
+58,Keenan Allen,IND,13,17.07,10,153.6,5.7,3.5
+59,Tre Tucker,LV,13,17.10,10,145.3,4.5,4.6
+60,Jordyn Tyson,NO,8,10.01,10,145.2,7.2,7.2
+61,Omar Cooper Jr.,NYJ,13,17.03,10,133.8,6.7,5.9
+62,Jauan Jennings,MIN,6,18.09,10,133.6,6.4,5.3
+63,Deebo Samuel Sr.,SF,8,11.11,10,133.2,6.3,3.7
+64,Denzel Boston,CLE,11,15.03,10,129.9,4.7,4.9
+65,Dontayvion Wicks,PHI,10,,10,127.9,5.3,4.3
+66,Pat Bryant,DEN,10,19.11,10,124.8,4.0,4.7
+67,Jalen Nailor,LV,13,16.03,10,123.8,4.9,3.9
+68,Travis Hunter,JAX,7,15.02,11,119.4,8.3,6.3
+69,Cooper Kupp,SEA,11,17.07,11,116.5,5.3,3.5
+70,Jerry Jeudy,CLE,11,16.04,11,116.3,5.5,5.5
+71,DeMario Douglas,NE,11,,11,115.4,4.8,4.1
+72,Malachi Fields,NYG,8,19.04,11,113.9,5.4,3.7
+73,Ja'Kobi Lane,BAL,13,14.06,11,112.2,5.3,4.8
+74,Tank Dell,HOU,8,16.10,11,112.0,8.5,6.3
+75,Adonai Mitchell,NYJ,13,20.03,11,112.0,4.6,4.5
+76,Germie Bernard,PIT,9,20.02,11,110.9,5.4,4.1
+77,Cyrus Allen,KC,5,15.08,11,110.5,5.3,4.7
+78,Kyle Williams,NE,11,19.06,11,108.9,5.0,5.7
+79,Calvin Ridley,TEN,9,22.01,11,108.5,5.2,4.7
+80,Chris Bell,MIA,6,21.01,11,107.6,6.3,5.6
+81,Tre' Harris,LAC,7,20.03,11,106.9,4.3,5.1
+82,Keon Coleman,BUF,7,20.07,11,105.9,5.4,5.3
+83,Jack Bech,LV,13,20.10,11,104.3,4.6,5.2
+84,Ryan Flournoy,DAL,14,20.03,11,103.7,4.3,4.8
+85,Zachariah Branch,ATL,11,18.08,11,103.1,4.3,5.2
+86,Caleb Douglas,MIA,6,17.07,11,100.0,5.3,4.4
+87,Darius Slayton,NYG,8,,11,91.9,4.9,3.9
+88,Devaughn Vele,NO,8,20.12,11,91.7,4.8,4.3
+89,Jaylin Noel,HOU,8,18.10,11,91.3,4.2,3.5
+90,Xavier Hutchinson,HOU,8,,11,91.0,3.5,2.0
+91,Jalen Tolbert,MIA,6,,11,89.8,4.4,3.1
+92,Tory Horton,SEA,11,20.01,11,89.7,5.1,4.0
+93,Rashod Bateman,BAL,13,20.05,11,89.5,5.2,3.8
+94,Isaac TeSlaa,DET,6,19.12,11,89.2,7.8,6.3
+95,Jalen McMillan,TB,10,18.06,11,89.2,3.5,4.0
+96,Antonio Williams,WAS,7,20.08,11,88.1,5.3,5.2
+97,Ted Hurst III,TB,10,20.12,11,87.3,5.3,4.3
+98,Troy Franklin,DEN,10,21.02,11,86.2,4.0,3.7
+99,Elic Ayomanor,TEN,9,21.02,11,81.6,4.7,4.1
+100,Andrei Iosivas,CIN,6,,11,80.6,3.7,3.9
+101,Tyquan Thornton,KC,5,,11,79.5,5.8,3.7
+102,Tez Johnson,TB,10,,11,79.0,4.6,3.6
+103,Darnell Mooney,NYG,8,21.09,11,76.8,4.8,3.8
+104,Chimere Dike,TEN,9,20.01,11,76.2,5.1,3.7
+105,Jahan Dotson,ATL,11,,11,70.6,3.5,2.5
+106,Christian Kirk,SF,8,21.02,11,66.8,5.8,3.9
+107,Malik Benson,LV,13,,11,62.9,5.5,3.5
+108,Bryce Lance,NO,8,,11,62.8,8.0,6.0
+109,Kalif Raymond,CHI,10,,11,60.8,4.7,3.3
+110,Roman Wilson,PIT,9,,11,60.7,5.1,2.7
+111,Olamide Zaccheaus,ATL,11,,11,59.6,2.5,2.5
+112,Marvin Mims Jr.,DEN,10,19.04,11,58.9,4.7,2.3
+113,Jordan Whittington,LAR,11,,11,57.9,4.7,3.3
+114,Mack Hollins,NE,11,,11,57.2,5.3,3.4
+115,Treylon Burks,WAS,7,,11,57.2,5.7,3.6
+116,Kendrick Bourne,ARI,14,,11,55.2,3.7,2.7
+117,Dont'e Thornton Jr.,LV,13,,11,53.1,5.6,3.5
+118,Brenen Thompson,LAC,7,,11,52.1,5.6,3.8
+119,Xavier Legette,CAR,5,,11,51.0,4.7,4.2
+120,Elijah Sarratt,BAL,13,20.01,11,49.1,4.5,4.3
+121,Calvin Austin III,NYG,8,,11,48.8,4.0,2.0
+122,Skyler Bell,BUF,7,,11,48.1,3.5,3.0
+123,Van Jefferson,FA,,58.08,11,47.1,4.0,2.0
+124,Tutu Atwell,LAR,11,,11,46.1,5.0,2.9
+125,Devontez Walker,BAL,13,,11,45.4,4.3,3.0
+126,Jaylin Lane,WAS,7,,11,44.6,4.0,3.0
+127,Hollywood Brown,PHI,10,,11,41.4,5.1,3.7
+128,Cedric Tillman,NO,8,56.07,11,40.1,4.5,3.6
+129,Chris Brazzell II,CAR,5,34.04,11,36.8,7.0,2.8
+130,Zavion Thomas,CHI,10,,11,33.5,6.3,4.3
+131,Kendrick Law,DET,6,,11,17.5,7.5,2.2

@@ -101,7 +101,7 @@ def interpolate_points(rows):
         row["estimated"] = True
 
 
-def reconcile_projections(rows, threshold=25):
+def reconcile_projections(rows, threshold=25):  # noqa: C901
     """Drop projections the app's ranking flatly contradicts.
 
     Projections come from the older CSV export and the ranks from the app, so
@@ -110,8 +110,11 @@ def reconcile_projections(rows, threshold=25):
     moved dozens of places has had something happen the export predates, and
     his stale projection would otherwise put him top of the value board.
     """
-    known = [r for r in rows if r["points"] is not None]
+    # Projections that came with the ranking cannot disagree with it.
+    known = [r for r in rows if r["points"] is not None and not r.get("fromPdf")]
     by_points = sorted(known, key=lambda r: -r["points"])
+    if not known:
+        return []
     implied = {id(r): i + 1 for i, r in enumerate(by_points)}
     stale = []
     for r in known:
@@ -154,6 +157,17 @@ def apply_tier_updates(players):
                 p["tier"] = int(row["Tier"]) if (row.get("Tier") or "").strip().isdigit() else None
                 p["adp"] = clean(row.get("ADP")) or None
                 p["adpPick"] = adp_to_pick(row.get("ADP"))
+                # The PDF export carries projections of its own. When it does,
+                # they win outright: they come from the same source as the rank,
+                # so they cannot contradict it the way the older CSV could.
+                if (row.get("Points") or "").strip():
+                    p["points"] = num(row["Points"])
+                    p["fromPdf"] = True
+                    p.pop("estimated", None)
+                if (row.get("Risk") or "").strip():
+                    p["risk"] = num(row["Risk"])
+                if (row.get("Upside") or "").strip():
+                    p["upside"] = num(row["Upside"])
                 rebuilt.append(p)
         # A screenshot can stop short of the full list. Anyone the export has
         # but the app screens did not reach keeps his place behind them rather

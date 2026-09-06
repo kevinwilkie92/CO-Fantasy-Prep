@@ -257,9 +257,9 @@ position.
 
 ## Rankings
 
-Projections, tiers, ADP, risk/upside and writeups come from the Ultimate Draft
-Kit position rankings (Fantasy Footballers) — 346 players across QB/RB/WR/TE
-plus 32 team defences.
+Ranks, tiers, ADP, risk/upside and projections come from the Ultimate Draft Kit
+Redraft Rankings (Fantasy Footballers) — 316 players across QB/RB/WR/TE plus 32
+team defences. The written outlooks come from the older CSV export.
 
 Source CSVs live in `data/raw/`. To refresh them, drop in new exports with the
 same columns and rebuild:
@@ -268,36 +268,39 @@ same columns and rebuild:
 python3 scripts/build_rankings.py
 ```
 
-### Updating tiers from the app
+### Updating the rankings
 
-The UDK app re-ranks through the summer while the CSV export does not, so
-`data/raw/tiers_<pos>.csv` overlays fresher rank, tier, ADP, team and bye on top
-of an export. Columns are `Rank,Name,Team,Bye,ADP,Tier`; a missing file just
-means that position keeps its export. QB, RB, WR and DEF come from the app; TE
-is current through **TE37**, which is as far as the app screenshot reached — the
-remaining 17 from the export sit behind them in a tier past the app's last, and
-are flagged as such in the player pop-up. Send a screenshot of the rest and they
-slot in.
+The UDK **Redraft Rankings PDF** is the whole update in one file — rank, tier,
+bye, ADP, risk, upside and projected points for every position, plus team
+defences. Drop a new one in and rebuild:
 
-Team defences exist only in `tiers_def.csv` — there is no export behind them, so
-they carry a rank and a bye but no projection, ADP or tier. They rank behind
-every projected player, which is where a streamed defence belongs; filter the
-pool to DEF to find one.
+```sh
+python3 scripts/import_udk_pdf.py ~/Downloads/rankings.pdf
+python3 scripts/build_rankings.py
+```
 
-Projections and the writeups always come from the export, because the app screens
-do not carry them. Two things follow:
+The importer writes `data/raw/tiers_<pos>.csv`, which overlays the CSV export.
+It reports any rank it could not parse rather than quietly skipping it, so a
+gap in the output means a row needs looking at. Free agents legitimately have no
+bye and sometimes no ADP; both come through blank.
 
-- A player only in the app has his projection **estimated** from the ranked
-  players either side of him.
-- Where a projection flatly contradicts the app's rank — the app moved him 25+
-  places — the projection is stale and gets re-estimated the same way. Josh
-  Jacobs is the live example: the export projects him RB13, the app has him
-  RB84, so his 234.6 points would otherwise have made him the best value on the
-  board. Seven players across QB/RB/WR are currently estimated.
+Because the PDF carries projections, they win outright over the export's — they
+come from the same source as the rank, so they cannot contradict it. The export
+is now only the source of the **written outlooks**, which the PDF has no room
+for. A player who appears in the PDF but not the export simply has no writeup.
 
-An ADP past the end of the draft (Cedric Tillman goes 56.07) reads as
-*undrafted* rather than as a deep bargain, and makes a player a near-certainty
-to survive to your next pick.
+Team defences carry a rank and a bye and nothing else — no projection, ADP or
+tier. They rank behind every projected player, which is where a streamed defence
+belongs; filter the pool to DEF to find one.
+
+If a future update ever lacks projections, two fallbacks still exist: a player
+with none has his estimated from the ranked players either side of him, and an
+export projection that flatly contradicts the ranking — 25+ places out — is
+re-estimated the same way. Neither fires against the current PDF.
+
+An ADP past the end of the draft (Van Jefferson goes 58.08) reads as *undrafted*
+rather than as a deep bargain, and makes a player a near-certainty to survive to
+your next pick.
 
 Estimated projections carry an asterisk in the Available table and are labelled
 in the player pop-up. The rebuild prints every one it makes, along with any name
