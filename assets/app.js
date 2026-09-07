@@ -16,6 +16,7 @@ const LS = {
   overrides: 'cofp.overrides',
   predicted: 'cofp.predicted',
   myPicks: 'cofp.myPicks',
+  mockByLeague: 'cofp.mockByLeague',
   targets: 'cofp.targets',
   keeperSort: 'cofp.keeperSort',
   snapshot: 'cofp.snapshot',
@@ -1870,7 +1871,7 @@ function renderSim() {
 const DEFAULT_MY_PICKS = '2.01, 2.02, 2.05, 4.10, 5.12, 6.10, 7.03, 8.12, 9.12, 10.01, 12.01, 13.08, 13.12';
 
 const mockState = { picks: [], teams: 12, rounds: 14, label: '', myOwner: null, error: '',
-  raw: '', id: '', myPicks: DEFAULT_MY_PICKS, claimed: 0 };
+  raw: '', id: '', myPicks: DEFAULT_MY_PICKS, claimed: 0, useLeague: true, byLeague: false };
 
 /**
  * Read a list of picks. "2.05" is round 2, fifth pick of that round — the way
@@ -2167,9 +2168,27 @@ function mockOwnerLabel(field, key, slot) {
  * them in. Where picks have been traded that is wrong, so your own can be
  * claimed two ways: mark the line with a leading * , or list the pick numbers.
  */
-function parsePastedMock(text, teams, myPickSpec) {
+function leaguePickOwners(teams) {
+  const s2r = slotToRoster();
+  // Only meaningful for a mock the size of this league — a ten-team lobby mock
+  // shares nothing with these rosters.
+  if (Object.keys(s2r).length !== teams) return null;
+  const traded = pickOwnerMap();
+  return (round, slot) => {
+    const original = s2r[slot];
+    if (!original) return null;
+    return traded.get(round + ':' + original) || original;
+  };
+}
+
+function parsePastedMock(text, teams, myPickSpec, useLeague) {
   const spec = parsePickSpec(myPickSpec, teams);
   const mine = spec.picks;
+  // Your league knows who owns every pick in it, yours and everyone else's.
+  // Where that is available it beats a hand-kept list outright: the list only
+  // covers your own trades, which leaves the slots you traded with short and
+  // grades them as extra teams that do not exist.
+  const owners = useLeague === false ? null : leaguePickOwners(teams);
   const lines = String(text).split(/\n/).map((l) => l.trim()).filter(Boolean);
   const out = [];
   const missing = [];
@@ -2184,17 +2203,28 @@ function parsePastedMock(text, teams, myPickSpec) {
     if (!rank) missing.push(name);
     const pickNo = i + 1;
     const { round, slot } = slotOfPickIn(pickNo, teams);
-    const isMine = starred || mine.has(pickNo);
-    out.push({
-      pickNo, round, slot, name, rank,
-      owner: isMine ? 'me' : 'draft_slot:' + slot,
-      ownerLabel: isMine ? 'You' : 'Slot ' + slot,
-    });
+    const rid = owners ? owners(round, slot) : null;
+    let owner;
+    let ownerLabel;
+    if (starred) {
+      owner = 'me';
+      ownerLabel = 'You';
+    } else if (rid) {
+      owner = rid === S.myRosterId ? 'me' : 'roster:' + rid;
+      ownerLabel = rid === S.myRosterId ? 'You' : teamName(rid);
+    } else if (mine.has(pickNo)) {
+      owner = 'me';
+      ownerLabel = 'You';
+    } else {
+      owner = 'draft_slot:' + slot;
+      ownerLabel = 'Slot ' + slot;
+    }
+    out.push({ pickNo, round, slot, name, rank, owner, ownerLabel });
   });
   return {
-    picks: out, missing, badSpec: spec.bad,
+    picks: out, missing, badSpec: spec.bad, byLeague: !!owners,
     claimed: out.filter((p) => p.owner === 'me').length,
-    unmatchedPicks: Array.from(mine).filter((n) => n > out.length),
+    unmatchedPicks: owners ? [] : Array.from(mine).filter((n) => n > out.length),
   };
 }
 
@@ -2314,7 +2344,8 @@ function renderGrade() {
         const r = await loadMockFromSleeper(idInput.value.trim(), mockState.myPicks);
         if (r.badSpec.length) throw new Error('Could not read pick(s): ' + r.badSpec.join(', ')
           + '. Use round.pick like 2.05, or an overall pick number.');
-        Object.assign(mockState, r, { missing: [], myOwner: r.claimed ? 'me' : mockState.myOwner });
+        Object.assign(mockState, r, { missing: [], byLeague: false,
+          myOwner: r.claimed ? 'me' : mockState.myOwner });
       }) }),
     ]),
     el('div', { style: 'margin-top:10px' }, [pasteBox]),
@@ -2322,25 +2353,35 @@ function renderGrade() {
       el('label', { class: 'sub', style: 'margin:0', text: 'teams' }),
       el('input', { type: 'number', min: '2', max: '20', value: String(mockState.teams), style: 'width:70px',
         onchange: (e) => { mockState.teams = Number(e.target.value) || 12; } }),
-      el('label', { class: 'sub', style: 'margin:0', text: 'your picks' }),
+      el('label', { class: 'sub nw', style: 'margin:0;display:flex;gap:5px;align-items:center',
+        title: 'Your league records who holds every pick in it, so a mock the size of your league can be '
+          + 'split across the real twelve teams with everyone\u2019s trades, not only yours. Turn this off '
+          + 'for a mock drafted somewhere else, where those trades mean nothing.' }, [
+        el('input', { type: 'checkbox', checked: mockState.useLeague ? 'checked' : null,
+          onchange: (e) => { mockState.useLeague = e.target.checked;
+            lsSet(LS.mockByLeague, e.target.checked); } }),
+        'use my league\u2019s trades',
+      ]),
+      el('label', { class: 'sub nw', style: 'margin:0', text: 'your picks' }),
       el('input', { type: 'text', class: 'grow', style: 'min-width:260px', value: mockState.myPicks,
         placeholder: 'e.g. 2.01, 4.10, 7.03',
         title: 'Round.pick, the way a draft board reads — 2.05 is the fifth pick of round two. '
-          + 'A bare number is an overall pick. Traded picks mean these need not sit in one slot. '
-          + 'You can also mark lines in the paste with a leading *. Other teams are still grouped by '
-          + 'draft slot, so any of their trades will not show.',
+          + 'A bare number is an overall pick. Used when your league\u2019s trades are switched off or do '
+          + 'not apply — then only your own picks are known and the other teams fall back to draft slots. '
+          + 'You can also mark lines in the paste with a leading *.',
         oninput: (e) => { mockState.myPicks = e.target.value; lsSet(LS.myPicks, e.target.value); } }),
       el('button', { class: 'btn small', text: 'reset', title: 'back to your usual picks',
         onclick: () => { mockState.myPicks = DEFAULT_MY_PICKS; lsSet(LS.myPicks, DEFAULT_MY_PICKS); renderGrade(); } }),
       el('button', { class: 'btn', text: 'Grade pasted picks', onclick: () => run(async () => {
-        const r = parsePastedMock(pasteBox.value, mockState.teams, mockState.myPicks);
+        const r = parsePastedMock(pasteBox.value, mockState.teams, mockState.myPicks, mockState.useLeague);
         if (!r.picks.length) throw new Error('No picks found in that paste.');
         if (r.badSpec.length) throw new Error('Could not read pick(s): ' + r.badSpec.join(', ')
           + '. Use round.pick like 2.05, or an overall pick number.');
         Object.assign(mockState, {
           picks: r.picks, missing: r.missing, claimed: r.claimed, unmatchedPicks: r.unmatchedPicks,
-          myOwner: r.claimed ? 'me' : mockState.myOwner,
+          byLeague: r.byLeague, myOwner: r.claimed ? 'me' : mockState.myOwner,
           label: 'pasted · ' + r.picks.length + ' picks'
+            + (r.byLeague ? ' · teams from your league, trades included' : '')
             + (r.claimed ? ' · ' + r.claimed + ' claimed as yours' : ''),
         });
       }) }),
@@ -2348,6 +2389,10 @@ function renderGrade() {
       slotSel,
     ]),
     mockState.error ? el('p', { class: 'sub bad', style: 'margin-top:8px', text: mockState.error }) : null,
+    (mockState.byLeague && !mockState.claimed && !S.myRosterId)
+      ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'Teams came from your league, but no team '
+        + 'is marked as yours. Pick yours in League Settings, or choose it from the list on the right.' })
+      : null,
     (mockState.picks.length && !mockState.claimed
       && mockState.picks.every((p) => String(p.owner).indexOf('draft_slot:') === 0))
       ? el('p', { class: 'sub warn', style: 'margin-top:8px', text: 'None of your picks were claimed, so every '
@@ -2957,6 +3002,7 @@ function init() {
   S.overrides = lsGet(LS.overrides, {}) || {};
   S.targets = new Set(lsGet(LS.targets, []) || []);
   mockState.myPicks = lsGet(LS.myPicks, DEFAULT_MY_PICKS) || DEFAULT_MY_PICKS;
+  mockState.useLeague = lsGet(LS.mockByLeague, true) !== false;
   keeperSort = lsGet(LS.keeperSort, 'rounds') || 'rounds';
   S.myRosterId = lsGet(LS.team, null);
   const savedView = (() => { try { return localStorage.getItem('cofp.view'); } catch (e) { return null; } })();
