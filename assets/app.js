@@ -2096,12 +2096,36 @@ function pickDelta(p) {
 }
 
 /** Pull a mock straight off Sleeper, by draft id or the URL you copied. */
-async function loadMockFromSleeper(input, myPickSpec) {
-  const m = String(input).match(/(\d{6,})/);
-  if (!m) throw new Error('That does not look like a Sleeper draft id or URL.');
-  const id = m[1];
+async function loadMockFromSleeper(input, myPickSpec, exact) {
+  // A pasted link needs the id dug out of it; an id this app already holds does
+  // not, and need not look like anything in particular.
+  let id = String(input || '').trim();
+  if (!exact) {
+    const m = id.match(/(\d{6,})/);
+    if (!m) throw new Error('That does not look like a Sleeper draft id or URL.');
+    id = m[1];
+  }
+  if (!id) throw new Error('No draft id to read.');
   const draft = await api('/draft/' + id);
   const raw = (await api('/draft/' + id + '/picks')) || [];
+  return draftToRows(draft, raw, myPickSpec, (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id);
+}
+
+/**
+ * This league's own draft, graded from what is already loaded. Once it has been
+ * run it is the draft you most want scored, and refetching it would only ask
+ * Sleeper for what the app is holding — so this works from a snapshot too.
+ */
+function gradeLeagueDraft(myPickSpec) {
+  if (!S.draft) throw new Error('No draft loaded for this league yet.');
+  const made = (S.picks || []).filter((p) => p.player_id);
+  if (!made.length) throw new Error('This league\u2019s draft has no picks in it yet.');
+  return draftToRows(S.draft, S.picks, myPickSpec, 'your league · ' + (S.draft.season || ''));
+}
+
+/** Turn a draft and its picks into graded rows, however they were obtained. */
+function draftToRows(draft, rawPicks, myPickSpec, label) {
+  const raw = rawPicks || [];
   const teams = (draft.settings && draft.settings.teams) || 12;
   const rounds = (draft.settings && draft.settings.rounds) || 14;
   const made = raw.filter((p) => p.player_id);
@@ -2141,7 +2165,8 @@ async function loadMockFromSleeper(input, myPickSpec) {
     picks: out, teams, rounds, claimed, badSpec: spec.bad, readBySlot: bySlot,
     unmatchedPicks: Array.from(spec.picks).filter((n) => !drafted.has(n)),
     tradedPicksSeen: out.some((p) => p.owner !== 'draft_slot:' + p.slot) && !bySlot,
-    label: (draft.type || 'mock') + ' · ' + (draft.season || '') + ' · ' + id
+    keepers: made.filter((p) => p.is_keeper).length,
+    label: label
       + (bySlot ? ' · teams read from draft slot' : ' · teams read from who drafted')
       + (claimed ? ' · ' + claimed + ' claimed as yours' : ''),
   };
@@ -2304,7 +2329,7 @@ function renderGrade() {
     value: mockState.id, placeholder: 'Sleeper mock draft link or id',
     oninput: (e) => { mockState.id = e.target.value; } });
   const pasteBox = el('textarea', { rows: '4',
-    placeholder: '…or paste the picks, one player per line in pick order',
+    placeholder: '…or paste a draft, one player per line in pick order',
     oninput: (e) => { mockState.raw = e.target.value; } });
   pasteBox.value = mockState.raw;
   // Built from whoever actually appears in the draft, since traded picks mean
@@ -2333,20 +2358,36 @@ function renderGrade() {
     renderGrade();
   };
 
+  // Pulling a draft off Sleeper is the same job whichever draft it is, and once
+  // your own has been run it is the one you most want graded.
+  const useDraft = (load) => run(async () => {
+    const r = await load();
+    if (r.badSpec.length) throw new Error('Could not read pick(s): ' + r.badSpec.join(', ')
+      + '. Use round.pick like 2.05, or an overall pick number.');
+    // A real league draft carries its own ownership, so your team is already in
+    // there by name — select it rather than making it be found by hand.
+    const byRoster = r.picks.some((p) => String(p.owner).indexOf('roster_id:') === 0);
+    Object.assign(mockState, r, { missing: [], byLeague: false,
+      myOwner: r.claimed ? 'me'
+        : (byRoster && S.myRosterId ? 'roster_id:' + S.myRosterId : mockState.myOwner) });
+  });
+
+  const drafted = (S.picks || []).filter((p) => p.player_id).length;
   host.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Grade a mock draft' }),
+    el('h2', { text: 'Grade a draft' }),
     el('p', { class: 'sub', text: 'Graded against your league — its starting lineup, its scoring, these rankings. '
-      + 'Every team in the mock is scored, on the curve of that draft. Teams come from who actually made '
-      + 'each pick, so traded picks land with the team that used them.' }),
+      + 'Every team is scored, on the curve of that draft. Teams come from who actually made each pick, so '
+      + 'traded picks land with the team that used them.' }),
+    drafted ? el('div', { class: 'row', style: 'margin-bottom:10px' }, [
+      el('button', { class: 'btn primary', text: 'Grade my league\u2019s draft',
+        title: 'Your own draft, every team by name, keepers and traded picks included.',
+        onclick: () => useDraft(() => gradeLeagueDraft(mockState.myPicks)) }),
+      el('span', { class: 'sub', style: 'margin:0', text: drafted + ' picks made' }),
+    ]) : null,
     el('div', { class: 'row' }, [
       idInput,
-      el('button', { class: 'btn primary', text: 'Grade from Sleeper', onclick: () => run(async () => {
-        const r = await loadMockFromSleeper(idInput.value.trim(), mockState.myPicks);
-        if (r.badSpec.length) throw new Error('Could not read pick(s): ' + r.badSpec.join(', ')
-          + '. Use round.pick like 2.05, or an overall pick number.');
-        Object.assign(mockState, r, { missing: [], byLeague: false,
-          myOwner: r.claimed ? 'me' : mockState.myOwner });
-      }) }),
+      el('button', { class: 'btn', text: 'Grade from a link',
+        onclick: () => useDraft(() => loadMockFromSleeper(idInput.value.trim(), mockState.myPicks)) }),
     ]),
     el('div', { style: 'margin-top:10px' }, [pasteBox]),
     el('div', { class: 'row', style: 'margin-top:8px' }, [
@@ -2447,7 +2488,7 @@ function renderGrade() {
   }
 
   host.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Every team in the mock' }),
+    el('h2', { text: 'Every team' }),
     el('p', { class: 'sub', text: mockState.label + ' · Starters is the projected points of the best legal lineup. '
       + 'Value is how far a team beat the rest of this draft at turning its slots into points over replacement — '
       + 'draft skill, with the luck of picking early taken out. Grades curve across this draft, and a team is '
